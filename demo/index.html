@@ -245,7 +245,7 @@
             <button class="btn" id="opWinners">draw_winners</button>
             <button class="btn danger" id="opRun" title="One-shot bulk draw. Marks the wave as drawn.">draw_run (bulk)</button>
           </div>
-          <p class="muted small" style="margin:0 0 8px">Use either one-by-one picks or <code>draw_run</code> for a wave, not both. Ported faithfully, <code>draw_run</code> doesn't subtract slots already awarded by <code>draw_pick_one</code>, so mixing them over-awards.</p>
+          <p class="muted small" style="margin:0 0 8px">One-by-one picks and <code>draw_run</code> can be mixed: <code>draw_run</code> only awards the slots still open and skips anyone who already won this wave.</p>
           <div class="op-result" id="opResult" aria-live="polite"></div>
         </div>
         <iframe class="frame-auto frame-viewport" id="operatorFrame" data-src="operator.html" title="Operator draw panel"></iframe>

@@ -923,11 +923,26 @@
     return set;
   }
 
+  function wonInWave(entries, waveId) {
+    return entries.filter(function (e) { return e.wave_id === waveId && e.result === STATUS.DRAW_WON; });
+  }
+
+  // Removes one slot per prize already won this wave, so bulk and one-by-one draws can be mixed.
+  function remainingSlots(slots, wonEntries) {
+    var used = {};
+    wonEntries.forEach(function (e) { used[e.grand_prize_id] = (used[e.grand_prize_id] || 0) + 1; });
+    return slots.filter(function (s) {
+      if (used[s.grand_prize_id] > 0) { used[s.grand_prize_id]--; return false; }
+      return true;
+    });
+  }
+
   function drawPreflightWithAttendance(db, waveId) {
     var wave = findRow(db, SHEET.DRAW_WAVES, 'wave_id', waveId);
     if (!wave) return { ok: false, error: 'wave_not_found', wave_id: waveId };
-    var prizeSlots = expandGrandPrizes(readAllRows(db, SHEET.GRAND_PRIZES), waveId);
-    var pendingAll = readAllRows(db, SHEET.DRAW_ENTRIES).filter(function (e) { return e.wave_id === waveId && e.result === STATUS.DRAW_PENDING; });
+    var allEntries = readAllRows(db, SHEET.DRAW_ENTRIES);
+    var prizeSlots = remainingSlots(expandGrandPrizes(readAllRows(db, SHEET.GRAND_PRIZES), waveId), wonInWave(allEntries, waveId));
+    var pendingAll = allEntries.filter(function (e) { return e.wave_id === waveId && e.result === STATUS.DRAW_PENDING; });
     var att = getAttendeeSet(db, waveId);
     var eligiblePool = pendingAll.filter(function (e) { return att.has(normalizePhone(e.user_id)); });
     var nonAttendee = pendingAll.filter(function (e) { return !att.has(normalizePhone(e.user_id)); });
@@ -953,14 +968,19 @@
     var wave = findRow(db, SHEET.DRAW_WAVES, 'wave_id', waveId);
     if (!wave) return { ok: false, error: 'wave_not_found' };
     if (wave.status === STATUS.WAVE_DRAWN) return { ok: false, error: 'already_drawn' };
-    var prizeSlots = expandGrandPrizes(readAllRows(db, SHEET.GRAND_PRIZES), waveId);
-    var pendingAll = readAllRows(db, SHEET.DRAW_ENTRIES).filter(function (e) { return e.wave_id === waveId && e.result === STATUS.DRAW_PENDING; });
+    var allEntries = readAllRows(db, SHEET.DRAW_ENTRIES);
+    var won = wonInWave(allEntries, waveId);
+    var prizeSlots = remainingSlots(expandGrandPrizes(readAllRows(db, SHEET.GRAND_PRIZES), waveId), won);
+    var wonPhones = new Set(won.map(function (e) { return normalizePhone(e.user_id); }));
+    var pendingAll = allEntries.filter(function (e) { return e.wave_id === waveId && e.result === STATUS.DRAW_PENDING; });
     var att = getAttendeeSet(db, waveId);
-    var eligible = pendingAll.filter(function (e) { return att.has(normalizePhone(e.user_id)); });
+    var attended = pendingAll.filter(function (e) { return att.has(normalizePhone(e.user_id)); });
+    var eligible = attended.filter(function (e) { return !wonPhones.has(normalizePhone(e.user_id)); });
+    var priorWinners = attended.filter(function (e) { return wonPhones.has(normalizePhone(e.user_id)); });
     var notAttended = pendingAll.filter(function (e) { return !att.has(normalizePhone(e.user_id)); });
     var shuffled = shuffleArray(db, eligible.slice());
     var winners = shuffled.slice(0, Math.min(prizeSlots.length, shuffled.length));
-    var losers = shuffled.slice(winners.length);
+    var losers = shuffled.slice(winners.length).concat(priorWinners);
     var now = fmtTs(nowJkt(db));
     var results = [];
     winners.forEach(function (entry, i) {
@@ -1019,8 +1039,7 @@
     var waveComplete = totalWonNow >= allSlots.length;
     if (waveComplete) {
       allEntries.forEach(function (e) {
-        // DEMO FIX: the .gs version iterates the pre-update snapshot, so the winner just picked
-        // still reads as "pending" and is overwritten to not_drawn. Skip the winner's row here.
+        // allEntries is the pre-update snapshot: the winner still reads as pending here
         if (e._rowNum === winner._rowNum) return;
         if (e.wave_id === waveId && e.result === STATUS.DRAW_PENDING) {
           updateRow(db, SHEET.DRAW_ENTRIES, e._rowNum, { result: STATUS.DRAW_NOT_DRAWN, drawn_at: now });

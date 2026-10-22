@@ -120,10 +120,10 @@ function drawPreflightWithAttendance(waveId) {
   const wave = findRow(SHEET.DRAW_WAVES, 'wave_id', waveId);
   if (!wave) return { ok: false, error: 'wave_not_found', wave_id: waveId };
 
-  const grandPrizes = readAllRows(SHEET.GRAND_PRIZES);
-  const prizeSlots  = expandGrandPrizes(grandPrizes, waveId);
-
   const allEntries    = readAllRows(SHEET.DRAW_ENTRIES);
+  const wonThisWave   = allEntries.filter(e => e.wave_id === waveId && e.result === STATUS.DRAW_WON);
+  const prizeSlots    = remainingSlots_(expandGrandPrizes(readAllRows(SHEET.GRAND_PRIZES), waveId), wonThisWave);
+
   const pendingAll    = allEntries.filter(e =>
     e.wave_id === waveId && e.result === STATUS.DRAW_PENDING
   );
@@ -182,16 +182,21 @@ function drawWaveWithAttendance(waveId) {
     if (!wave) return { ok: false, error: 'wave_not_found' };
     if (wave.status === STATUS.WAVE_DRAWN) return { ok: false, error: 'already_drawn' };
 
-    const grandPrizes = readAllRows(SHEET.GRAND_PRIZES);
-    const prizeSlots  = expandGrandPrizes(grandPrizes, waveId);
-
     const allEntries  = readAllRows(SHEET.DRAW_ENTRIES);
     const pendingAll  = allEntries.filter(e =>
       e.wave_id === waveId && e.result === STATUS.DRAW_PENDING
     );
 
+    // Slots already awarded via drawPickOneWithAttendance are not drawn again,
+    // and a phone that already won this wave cannot win a second prize.
+    const wonThisWave = allEntries.filter(e => e.wave_id === waveId && e.result === STATUS.DRAW_WON);
+    const prizeSlots  = remainingSlots_(expandGrandPrizes(readAllRows(SHEET.GRAND_PRIZES), waveId), wonThisWave);
+    const wonPhones   = new Set(wonThisWave.map(e => normalizePhone_(e.user_id)));
+
     const attendeeSet   = getAttendeeSet_(waveId);
-    const eligible      = pendingAll.filter(e => attendeeSet.has(normalizePhone_(e.user_id)));
+    const attended      = pendingAll.filter(e => attendeeSet.has(normalizePhone_(e.user_id)));
+    const eligible      = attended.filter(e => !wonPhones.has(normalizePhone_(e.user_id)));
+    const priorWinners  = attended.filter(e => wonPhones.has(normalizePhone_(e.user_id)));
     const notAttended   = pendingAll.filter(e => !attendeeSet.has(normalizePhone_(e.user_id)));
 
     Logger.log('drawWaveWithAttendance: waveId=' + waveId +
@@ -202,7 +207,7 @@ function drawWaveWithAttendance(waveId) {
 
     const shuffled = shuffleArray(eligible.slice());
     const winners  = shuffled.slice(0, Math.min(prizeSlots.length, shuffled.length));
-    const losers   = shuffled.slice(winners.length);
+    const losers   = shuffled.slice(winners.length).concat(priorWinners);
 
     const now = fmtTs(nowJkt());
     const winnerResults = [];
@@ -392,6 +397,8 @@ function drawPickOneWithAttendance(waveId, grandPrizeId) {
     const waveComplete = totalWonNow >= allSlots.length;
     if (waveComplete) {
       allEntries.forEach(e => {
+        // allEntries is the pre-update snapshot: the winner still reads as pending here
+        if (e.entry_id === winner.entry_id) return;
         if (e.wave_id === waveId && e.result === STATUS.DRAW_PENDING) {
           updateRow(SHEET.DRAW_ENTRIES, e._rowNum, {
             result: STATUS.DRAW_NOT_DRAWN, drawn_at: now,
@@ -493,4 +500,19 @@ function getDrawProgress(waveId) {
     eligible_pool: eligiblePool,
     prizes:        Object.values(progress),
   };
+}
+
+/**
+ * Removes one slot per prize already won this wave, so bulk and one-by-one draws can be mixed.
+ * @param  {Array} slots       expandGrandPrizes() output
+ * @param  {Array} wonEntries  DRAW_ENTRIES rows with result = won for this wave
+ * @return {Array} slots still to award
+ */
+function remainingSlots_(slots, wonEntries) {
+  const used = {};
+  wonEntries.forEach(e => { used[e.grand_prize_id] = (used[e.grand_prize_id] || 0) + 1; });
+  return slots.filter(s => {
+    if (used[s.grand_prize_id] > 0) { used[s.grand_prize_id]--; return false; }
+    return true;
+  });
 }
