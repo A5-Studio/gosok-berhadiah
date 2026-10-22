@@ -2,7 +2,7 @@
 
 **A Rp 200M digital scratch-card campaign for 10,000 merchants, built end-to-end on Google Sheets + Apps Script with zero infrastructure.**
 
-[**Case study**](https://faqihbw.github.io/gosok-berhadiah/) · [**▶ Try the live demo**](https://faqihbw.github.io/gosok-berhadiah/demo/) · [Program design](docs/01-program-design.md) · [Technical design](docs/02-technical-design.md)
+[Case study page](index.html) · [Demo](demo/) · [Program design](docs/01-program-design.md) · [Technical design](docs/02-technical-design.md)
 
 > Portfolio project by **Faqih**. Campaign design, system design, backend, frontend, and operations tooling.
 > All data in this repo and the demo is synthetic. Production IDs and merchant data have been removed.
@@ -49,7 +49,7 @@ Full diagrams (ER, sequence, flowcharts) and 11 design decisions with trade-offs
 
 ## Try it
 
-The [demo](https://faqihbw.github.io/gosok-berhadiah/demo/) runs the real frontend code against an in-browser JavaScript port of the Apps Script backend. No Google account needed.
+The [demo](demo/) runs the real frontend code against an in-browser JavaScript port of the Apps Script backend. No Google account needed.
 
 Test phone numbers (simulated clock starts 20 Jun 2026 10:00 WIB):
 
@@ -73,18 +73,38 @@ Run locally:
 python3 -m http.server 8000
 ```
 
-Then open <http://localhost:8000/demo/>.
+Then open <http://localhost:8000/> for the case study page, or <http://localhost:8000/demo/> for the demo.
+
+## Deploy (Vercel)
+
+The site is plain static HTML. No build step.
+
+1. In Vercel, **Add New → Project** and import this repository.
+2. Framework preset: **Other**. Leave build command and output directory empty (root).
+3. Deploy.
+
+What gets published is set by two files:
+
+| File | Purpose |
+|---|---|
+| `.vercelignore` | Keeps `backend/`, `frontend/`, `docs/`, `README.md` and `LICENSE` out of the deployment, so source and design docs stay private |
+| `vercel.json` | `/demo` → `/demo/` redirect (the demo uses relative paths), security headers, caching for images |
+
+Served routes: `/` (case study page), `/img/*`, `/demo/*`.
 
 ## Repo layout
 
 ```
 .
-├── demo/        Interactive demo (static, GitHub Pages)
+├── index.html   Case study page (site root)
+├── img/         Screenshots used by the case study page
+├── demo/        Interactive demo (static)
 ├── backend/     Apps Script source — 11 .gs modules
 ├── frontend/    Merchant scratch widget + operator draw panel
 └── docs/
     ├── 01-program-design.md     Goal, mechanics, prize economics, journey, ops, risks
     └── 02-technical-design.md   Architecture, data model, flows, API, decisions, limits
+vercel.json, .vercelignore       Vercel static hosting config
 ```
 
 ## Engineering decisions worth a look

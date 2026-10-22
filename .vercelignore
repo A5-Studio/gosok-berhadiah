@@ -1,0 +1,8 @@
+# Only the static site is deployed: index.html, img/ and demo/.
+# Source and design docs stay in the private repo.
+backend/
+frontend/
+docs/
+README.md
+LICENSE
+.claude/
