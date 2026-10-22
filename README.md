@@ -2,7 +2,7 @@
 
 **A Rp 200M digital scratch-card campaign for 10,000 merchants, built end-to-end on Google Sheets + Apps Script with zero infrastructure.**
 
-[**▶ Try the live demo**](https://faqihbw.github.io/gosok-berhadiah/demo/) · [Program design](docs/01-program-design.md) · [Technical design](docs/02-technical-design.md)
+[**Case study**](https://faqihbw.github.io/gosok-berhadiah/) · [**▶ Try the live demo**](https://faqihbw.github.io/gosok-berhadiah/demo/) · [Program design](docs/01-program-design.md) · [Technical design](docs/02-technical-design.md)
 
 > Portfolio project by **Faqih**. Campaign design, system design, backend, frontend, and operations tooling.
 > All data in this repo and the demo is synthetic. Production IDs and merchant data have been removed.

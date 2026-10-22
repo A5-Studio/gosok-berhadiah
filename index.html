@@ -4,12 +4,581 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gosok Berhadiah</title>
-<meta http-equiv="refresh" content="0; url=demo/">
-<link rel="canonical" href="demo/">
-<style>body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#F6F4EC;color:#2C2C2A;margin:0;padding:40px 16px;text-align:center}a{color:#1B3F8B;font-weight:700}@media (prefers-color-scheme:dark){body{background:#0D1220;color:#ECEDF1}a{color:#FFC107}}</style>
+<meta name="description" content="Case study: a Rp 200M digital scratch-card campaign for 10,000 merchants, built end-to-end on Google Sheets and Apps Script.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<meta property="og:title" content="Gosok Berhadiah">
+<meta property="og:description" content="Case study: a Rp 200M digital scratch-card campaign for 10,000 merchants, built on Google Sheets and Apps Script.">
+<meta property="og:image" content="img/win.webp">
+<link rel="icon" href="demo/assets/prize-draw.svg" type="image/svg+xml">
+<style>
+  /* Layout: a navy campaign band up top, then a single reading column that widens for screenshot strips. Foil grey marks "still hidden", gold marks "won". */
+  :root {
+    --navy: #1B3F8B;
+    --navy-deep: #122C63;
+    --gold: #FFC107;
+    --gold-ink: #8A5A00;
+    --foil: #A8A397;
+    --bg: #F6F4EC;
+    --surface: #FFFFFF;
+    --surface-2: #EEEBE1;
+    --line: #DDD9CC;
+    --fg: #22252B;
+    --muted: #63615A;
+    --accent: #1B3F8B;
+    --win: #9A2A55;
+    --band-fg: #FFFFFF;
+    --band-muted: #C9D3EA;
+    --t1: #FFC107; --t2: #F2A93B; --t3: #E07A3F; --t4: #C2506A; --t5: #8E3B78; --t6: #5B2D6E; --tg: #1B3F8B;
+
+    --display: 'Bricolage Grotesque', 'Plus Jakarta Sans', system-ui, sans-serif;
+    --body: 'Plus Jakarta Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E1322; --surface: #161D2F; --surface-2: #1D2639; --line: #2C3753;
+      --fg: #ECEDF1; --muted: #A2A8B7; --accent: #FFC107; --gold-ink: #FFD66B;
+      --win: #F28AB0; --navy: #172F66; --navy-deep: #0E1F47; --band-muted: #AEBBDA;
+      --tg: #6C8FDB; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E1322; --surface: #161D2F; --surface-2: #1D2639; --line: #2C3753;
+    --fg: #ECEDF1; --muted: #A2A8B7; --accent: #FFC107; --gold-ink: #FFD66B;
+    --win: #F28AB0; --navy: #172F66; --navy-deep: #0E1F47; --band-muted: #AEBBDA;
+    --tg: #6C8FDB; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  img { max-width: 100%; height: auto; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.6; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  a:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.02em; }
+  h2 { font-size: clamp(26px, 4vw, 36px); line-height: 1.1; font-weight: 800; }
+  h3 { font-size: 19px; line-height: 1.25; font-weight: 600; }
+  p { margin: 0; }
+  code, .mono { font-family: var(--mono); font-size: 0.86em; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .read { max-width: 68ch; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .lede { font-size: 18px; color: var(--muted); }
+  section { padding-block: 72px 0; }
+  .sec-head { display: grid; gap: 12px; margin-bottom: 32px; }
+
+  /* Hero band */
+  .band { background: var(--navy); color: var(--band-fg); position: relative; overflow: hidden; }
+  .band::after { content: ""; position: absolute; inset: auto 0 0 0; height: 6px; background: repeating-linear-gradient(90deg, var(--gold) 0 18px, transparent 18px 30px); opacity: .9; }
+  .hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 48px; align-items: end; padding-block: 56px 0; }
+  .hero-copy { display: grid; gap: 20px; padding-bottom: 56px; min-width: 0; }
+  .hero .eyebrow { color: var(--band-muted); }
+  .hero h1 { font-size: clamp(44px, 8vw, 88px); line-height: 0.92; font-weight: 800; }
+  .hero h1 span { color: var(--gold); display: block; }
+  .hero .lede { color: var(--band-muted); font-size: 19px; max-width: 46ch; }
+  .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid rgba(255,255,255,.18); margin-top: 8px; }
+  .fact { padding: 16px 16px 0 0; display: grid; gap: 2px; }
+  .fact b { font-family: var(--display); font-size: clamp(22px, 3vw, 30px); font-weight: 800; font-variant-numeric: tabular-nums; color: var(--band-fg); }
+  .fact > span { font-size: 13px; color: var(--band-muted); }
+  .hero-shot { align-self: end; justify-self: center; width: min(300px, 100%); }
+  .hero-shot img { display: block; width: 100%; border-radius: 28px 28px 0 0; border: 8px solid #0A0F1C; border-bottom: 0; box-shadow: 0 -12px 40px rgba(0,0,0,.25); }
+  .credit { font-size: 14px; color: var(--band-muted); }
+  .credit a { color: var(--gold); }
+
+  /* Brief */
+  .needs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .need { border-top: 3px solid var(--fg); padding-top: 12px; display: grid; gap: 6px; }
+  .need p { color: var(--muted); font-size: 15px; }
+  .answer { margin-top: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: grid; gap: 8px; }
+  .answer p:last-child { font-family: var(--display); font-size: clamp(20px, 2.6vw, 26px); line-height: 1.3; font-weight: 600; }
+
+  /* Screenshot strips */
+  .journey { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+  .step { display: grid; gap: 12px; align-content: start; min-width: 0; }
+  .step figure { margin: 0; }
+  .step img { display: block; width: 100%; aspect-ratio: 600 / 1077; object-fit: cover; border-radius: 22px; border: 6px solid #0A0F1C; background: #0A0F1C; }
+  .step-label { display: flex; gap: 10px; align-items: baseline; }
+  .step-label .n { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--gold-ink); }
+  .step p { color: var(--muted); font-size: 14.5px; }
+
+  .ux { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 32px; }
+  .ux div { display: grid; gap: 2px; padding-block: 12px; border-bottom: 1px solid var(--line); }
+  .ux b { font-weight: 700; }
+  .ux span { color: var(--muted); font-size: 15px; }
+
+  /* Prize economics */
+  .budget { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: grid; gap: 20px; }
+  .budget-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; align-items: baseline; }
+  .budget-top b { font-family: var(--display); font-size: clamp(28px, 4vw, 40px); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .bar { display: flex; height: 44px; border-radius: 10px; overflow: hidden; gap: 2px; background: var(--surface); }
+  .bar i { display: block; height: 100%; }
+  .scale { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: -12px; }
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; min-width: 520px; }
+  th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); }
+  th { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  td.num, th.num { text-align: right; }
+  tfoot td { font-weight: 700; border-bottom: 0; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 10px; vertical-align: -1px; }
+  .econ-notes { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .econ-notes div { display: grid; gap: 4px; }
+  .econ-notes p { color: var(--muted); font-size: 15px; }
+
+  /* Picker pseudo-code */
+  .picker { margin-top: 24px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  pre.code { margin: 0; background: #0E1322; color: #E4E7EF; border-radius: 14px; padding: 20px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.7; }
+  pre.code .c { color: #8B93A7; }
+  pre.code .k { color: #FFC107; }
+  .picker-copy { display: grid; gap: 12px; }
+  .picker-copy p { color: var(--muted); }
+
+  /* Live draw */
+  .draw { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 20px; }
+  .shot { margin: 0; display: grid; gap: 10px; min-width: 0; }
+  .shot img { display: block; width: 100%; border-radius: 14px; border: 1px solid var(--line); }
+  .shot figcaption { font-size: 14px; color: var(--muted); }
+  .draw-side { display: grid; gap: 20px; align-content: start; min-width: 0; }
+  .rules { display: grid; gap: 12px; }
+  .rules div { display: grid; gap: 2px; padding-left: 14px; border-left: 3px solid var(--gold); }
+  .rules span { color: var(--muted); font-size: 15px; }
+  .code-chip { font-family: var(--mono); font-weight: 700; letter-spacing: .12em; background: var(--navy); color: var(--gold); padding: 2px 8px; border-radius: 6px; font-size: 0.85em; white-space: nowrap; }
+
+  /* Architecture */
+  .arch { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px; overflow-x: auto; }
+  .arch pre.mermaid { margin: 0; background: transparent; }
+  .stack { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .stack div { display: grid; gap: 2px; }
+  .stack .eyebrow { font-size: 11px; }
+  .stack span { color: var(--muted); font-size: 15px; }
+
+  /* Decisions */
+  .decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .dec { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; gap: 8px; align-content: start; }
+  .dec .alt { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .dec p { color: var(--muted); font-size: 15px; }
+
+  /* Payout loop */
+  .loop { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; counter-reset: none; }
+  .loop div { padding: 16px 16px 16px 0; border-top: 3px solid var(--fg); display: grid; gap: 4px; position: relative; }
+  .loop div + div { padding-left: 16px; border-left: 1px solid var(--line); }
+  .loop .when { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--gold-ink); letter-spacing: .06em; text-transform: uppercase; }
+  .loop span { color: var(--muted); font-size: 15px; }
+
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; }
+  .scale-tbl td:first-child { color: var(--muted); }
+
+  footer { margin-top: 88px; border-top: 1px solid var(--line); padding-block: 32px 48px; }
+  .foot { display: flex; flex-wrap: wrap; gap: 12px 32px; justify-content: space-between; align-items: baseline; }
+  .foot p { color: var(--muted); font-size: 14px; max-width: 60ch; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px 20px; font-weight: 600; }
+
+  /* Motion */
+  .hero-shot { position: relative; }
+  .foil { position: absolute; inset: 8px 8px 0 8px; width: calc(100% - 16px); height: calc(100% - 8px); border-radius: 20px 20px 0 0; touch-action: none; cursor: grab; transition: opacity .5s ease; }
+  .foil.done { opacity: 0; pointer-events: none; }
+  .foil-hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--band-muted); white-space: nowrap; transition: opacity .4s; }
+  .foil-hint.gone { opacity: 0; }
+
+  .js .reveal.pre { opacity: 0; transform: translateY(18px); }
+  .reveal { transition: opacity .6s ease, transform .6s cubic-bezier(.2,.7,.2,1); transition-delay: calc(var(--i, 0) * 110ms); }
+
+  .bar i { transform-origin: left center; transition: transform .7s cubic-bezier(.3,.8,.3,1); transition-delay: calc(var(--i, 0) * 120ms); }
+  .js .bar.pre i { transform: scaleX(0); }
+
+  .loop { position: relative; }
+  .loop::before { content: ""; position: absolute; top: -3px; left: 0; height: 3px; width: 25%; background: var(--gold); animation: payday 6s steps(4, end) infinite; z-index: 1; }
+  @keyframes payday { from { transform: translateX(0); } to { transform: translateX(400%); } }
+  .loop div { transition: background .3s; }
+  .loop div.now .when::after { content: " ●"; color: var(--gold); }
+
+  pre.code .ln { display: block; border-radius: 4px; transition: background .3s; margin-inline: -6px; padding-inline: 6px; }
+  pre.code .ln.on { background: rgba(255, 193, 7, .16); }
+
+  .step img { transition: transform .25s ease; }
+  .dec:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(20, 30, 60, .10); }
+  .step:hover img { transform: translateY(-4px) rotate(-.6deg); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal.pre, .js .bar.pre i { opacity: 1; transform: none; }
+    .reveal, .bar i, .dec, .step img { transition: none; }
+    .loop::before { animation: none; width: 100%; opacity: .5; }
+    .foil, .foil-hint { display: none; }
+  }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; gap: 8px; }
+    .hero-copy { padding-bottom: 24px; }
+    .hero-shot { width: min(240px, 100%); }
+    .journey { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .draw, .picker, .two { grid-template-columns: 1fr; }
+    .loop { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .loop::before { display: none; }
+    .loop div:nth-child(3) { border-left: 0; padding-left: 0; }
+  }
+  @media (max-width: 520px) {
+    .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .journey { gap: 14px; }
+    .step img { border-width: 4px; border-radius: 16px; }
+    .loop { grid-template-columns: 1fr; }
+    .loop div + div { border-left: 0; padding-left: 0; }
+    section { padding-block: 56px 0; }
+  }
+</style>
 </head>
 <body>
-<p>Redirecting to the live demo… <a href="demo/">Open Gosok Berhadiah demo</a></p>
-<script>location.replace('demo/' + location.search + location.hash);</script>
+<header class="band">
+  <div class="wrap hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Case study · EDC BukuAgen · June 2026</p>
+      <h1>Gosok <span>Berhadiah</span></h1>
+      <p class="lede">A Rp 200M digital scratch-card campaign for 10,000 merchants. I designed the program and built every piece that ran it, on Google Sheets and Apps Script, with no servers.</p>
+      <div class="facts">
+        <div class="fact"><b>Rp <span class="count" data-to="200">200</span>M</b><span>budget, hit exactly</span></div>
+        <div class="fact"><b class="count" data-to="14000">14,000</b><span>scratch cards</span></div>
+        <div class="fact"><b class="count" data-to="17">17</b><span>grand prizes, 2 live draws</span></div>
+        <div class="fact"><b>0</b><span>servers to run</span></div>
+      </div>
+      <p class="credit">Campaign design, system design, backend, frontend and ops tooling by Faqih · <a href="https://github.com/A5-Studio/gosok-berhadiah">Source on GitHub</a></p>
+    </div>
+    <div class="hero-shot"><img src="img/win.webp" alt="Merchant widget after scratching: a Komisi Agen Rp 50.000 prize card with confetti." width="600" height="1077"><canvas class="foil" id="foil" aria-hidden="true"></canvas><span class="foil-hint" id="foilHint">Gosok di sini</span></div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section id="brief">
+    <div class="sec-head">
+      <p class="eyebrow">The brief</p>
+      <h2>Sell 10,000 payment terminals in one month, without a discount</h2>
+      <p class="lede read">A price cut would eat margin and teach merchants to wait for the next promo. Marketing owned the campaign and had no backend team.</p>
+    </div>
+    <div class="needs">
+      <div class="need"><h3>Reward every buyer</h3><p>No "I bought and got nothing" complaints in merchant groups.</p></div>
+      <div class="need"><h3>Make it shareable</h3><p>Word of mouth spreads in merchant communities, so wins had to be fun to post.</p></div>
+      <div class="need"><h3>Push the Android device</h3><p>It has better unit economics than the cheaper Saku terminal.</p></div>
+      <div class="need"><h3>Hold the budget exactly</h3><p>Finance approved Rp 200,000,000. No overrun allowed.</p></div>
+    </div>
+    <div class="answer">
+      <p class="eyebrow">The answer</p>
+      <p>Every eligible purchase earns a digital scratch card. Every card wins: cash paid to the merchant's balance, or an entry into a grand-prize draw held live on Instagram.</p>
+    </div>
+  </section>
+
+  <section id="merchant">
+    <div class="sec-head">
+      <p class="eyebrow">Merchant experience</p>
+      <h2>A phone number, a scratch, a payout date</h2>
+      <p class="lede read">The widget lives inside a WordPress landing page. Merchants open it from a personal WhatsApp link and are scratching within seconds.</p>
+    </div>
+    <div class="journey">
+      <div class="step">
+        <figure><img src="img/cards.webp" alt="Card list for an Android order showing two unscratched cards." width="600" height="1077" loading="lazy"></figure>
+        <div class="step-label"><span class="n">01</span><h3>Find your cards</h3></div>
+        <p>Phone number is the login. Android orders get two cards, the "double chance" that nudges buyers up.</p>
+      </div>
+      <div class="step">
+        <figure><img src="img/scratch.webp" alt="Grey foil scratch surface waiting to be scratched." width="600" height="1077" loading="lazy"></figure>
+        <div class="step-label"><span class="n">02</span><h3>Scratch the foil</h3></div>
+        <p>A real canvas gesture. The prize is already fixed on the server before the first stroke.</p>
+      </div>
+      <div class="step">
+        <figure><img src="img/win.webp" alt="Revealed Rp 50.000 prize with confetti and a share prompt." width="600" height="1077" loading="lazy"></figure>
+        <div class="step-label"><span class="n">03</span><h3>Win and share</h3></div>
+        <p>Confetti, a WhatsApp share, and the Friday payout date on every cash prize.</p>
+      </div>
+      <div class="step">
+        <figure><img src="img/history.webp" alt="Prize history showing two scratched cards and total commission." width="600" height="1077" loading="lazy"></figure>
+        <div class="step-label"><span class="n">04</span><h3>Track payouts</h3></div>
+        <p>Repeat buyers see their totals and which prizes have already been paid.</p>
+      </div>
+    </div>
+    <div class="ux">
+      <div><b>No password, no app install</b><span>Merchants already know their phone number.</span></div>
+      <div><b>Deep link <code>?uid=phone#kartu-gosok</code></b><span>One tap from a WhatsApp or CRM message to the cards.</span></div>
+      <div><b>An "order pending" state</b><span>Explains why cards aren't there yet, instead of "not found".</span></div>
+      <div><b>Payout date on every prize</b><span>Cuts "when do I get paid?" support tickets.</span></div>
+    </div>
+  </section>
+
+  <section id="prizes">
+    <div class="sec-head">
+      <p class="eyebrow">Prize economics</p>
+      <h2>Every rupiah of the budget, accounted for</h2>
+      <p class="lede read">Six cash tiers and 17 grand prizes sum to exactly Rp 200,000,000. Expected cash per card is about Rp 11.4K, so cost per activation was known before launch.</p>
+    </div>
+    <div class="budget">
+      <div class="budget-top"><p class="eyebrow">Prize pool by tier</p><b>Rp 200.000.000</b></div>
+      <div class="bar" role="img" aria-label="Stacked bar of the Rp 200M pool: Rp 5K tier 43.3M, Rp 10K 23.2M, Rp 20K 40M, Rp 50K 25M, Rp 100K 15M, Rp 200K 10M, grand prizes 43.5M.">
+        <i style="width:21.665%;background:var(--t1)"></i>
+        <i style="width:11.585%;background:var(--t2)"></i>
+        <i style="width:20%;background:var(--t3)"></i>
+        <i style="width:12.5%;background:var(--t4)"></i>
+        <i style="width:7.5%;background:var(--t5)"></i>
+        <i style="width:5%;background:var(--t6)"></i>
+        <i style="width:21.75%;background:var(--tg)"></i>
+      </div>
+      <div class="scale"><span>Rp 0</span><span>100M</span><span>200M</span></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Prize</th><th class="num">Qty</th><th class="num">Subtotal (Rp)</th><th class="num">Share of pool</th></tr></thead>
+          <tbody>
+            <tr><td><span class="sw" style="background:var(--t1)"></span>Cash Rp 5.000</td><td class="num">8,666</td><td class="num">43,330,000</td><td class="num">21.7%</td></tr>
+            <tr><td><span class="sw" style="background:var(--t2)"></span>Cash Rp 10.000</td><td class="num">2,317</td><td class="num">23,170,000</td><td class="num">11.6%</td></tr>
+            <tr><td><span class="sw" style="background:var(--t3)"></span>Cash Rp 20.000</td><td class="num">2,000</td><td class="num">40,000,000</td><td class="num">20.0%</td></tr>
+            <tr><td><span class="sw" style="background:var(--t4)"></span>Cash Rp 50.000</td><td class="num">500</td><td class="num">25,000,000</td><td class="num">12.5%</td></tr>
+            <tr><td><span class="sw" style="background:var(--t5)"></span>Cash Rp 100.000</td><td class="num">150</td><td class="num">15,000,000</td><td class="num">7.5%</td></tr>
+            <tr><td><span class="sw" style="background:var(--t6)"></span>Cash Rp 200.000</td><td class="num">50</td><td class="num">10,000,000</td><td class="num">5.0%</td></tr>
+            <tr><td><span class="sw" style="background:var(--tg)"></span>Grand prizes: 2 phones, 5 tablets, 10 CCTV</td><td class="num">17</td><td class="num">43,500,000</td><td class="num">21.8%</td></tr>
+          </tbody>
+          <tfoot><tr><td>Total</td><td class="num">13,700</td><td class="num">200,000,000</td><td class="num">100%</td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="picker">
+      <pre class="code" id="pickerCode"><span class="c"># 05_PrizePicker.gs, in plain terms</span>
+<span class="ln">eligible = tiers where remaining_qty &gt; 0
+           and today's quota not used up</span>
+<span class="ln"><span class="k">if</span> eligible is empty      → DRAW ENTRY</span><span class="ln"><span class="k">if</span> random() &lt; 0.03       → DRAW ENTRY</span><span class="ln"><span class="k">else</span> pick a tier, weight =
+     remaining_qty × weight_multiplier</span></pre>
+      <div class="picker-copy">
+        <h3>The engine can't overspend</h3>
+        <p>Pure random odds would let a busy first week drain the big tiers and leave late buyers with Rp 5K cards. Two rules stop that.</p>
+        <p><b>Weight by what's left.</b> As a tier runs low its odds drop on their own, so the month ends close to the planned mix with no manual tuning.</p>
+        <p><b>Daily quotas.</b> Each tier's stock is split across the scratch days. When every tier is capped, the card becomes a draw entry, so nobody loses.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="live-draw">
+    <div class="sec-head">
+      <p class="eyebrow">Live draw console</p>
+      <h2>Built to be run on air</h2>
+      <p class="lede read">Grand prizes were drawn on Instagram Live on 17 June and 8 July. The host drew one prize at a time from an operator panel, so the stream had a rhythm.</p>
+    </div>
+    <div class="draw">
+      <figure class="shot">
+        <img src="img/operator.webp" alt="Operator panel for Wave 1 with prize list and attendance pool count." width="1200" height="1125" loading="lazy">
+        <figcaption>Operator panel: pick a wave, see who is in the pool, draw prize by prize.</figcaption>
+      </figure>
+      <div class="draw-side">
+        <figure class="shot">
+          <img src="img/winner.webp" alt="Winner reveal showing a masked phone number and draw code GOSOK-ZEJ4A." width="1200" height="754" loading="lazy">
+          <figcaption>Winner reveal with a masked phone number and draw code.</figcaption>
+        </figure>
+        <div class="rules">
+          <div><b>Attendance-gated</b><span>Only merchants who registered for that stream can win. Drives viewership and makes every winner reachable.</span></div>
+          <div><b>Codes made to be read aloud</b><span>Format <span class="code-chip" id="drawCode">GOSOK-ZEJ4A</span> skips 0/O and 1/I/L.</span></div>
+          <div><b>Locked server-side</b><span>A wave can't be drawn twice. Each winner writes a shipping row.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="system">
+    <div class="sec-head">
+      <p class="eyebrow">System</p>
+      <h2>A spreadsheet as the database, on purpose</h2>
+      <p class="lede read">Ops and finance could open, read and correct the data themselves. A script lock and idempotency keys gave the guarantees that handling money needs.</p>
+    </div>
+    <div class="arch">
+<pre class="mermaid">
+flowchart LR
+    ORD[(Order export<br/>read-only)] -->|sync every 2h| GAS
+    WP[Merchant widget<br/>WordPress] -->|GET lookup / redeem| GAS[Apps Script<br/>Web App]
+    OP[Operator panel] -->|GET draw_*| GAS
+    GAS <--> DB[(Google Sheets<br/>14 tabs)]
+    GAS -->|Thu CSV| DRIVE[(Drive)] --> FIN[Finance]
+    FIN -->|status = DONE| DB
+</pre>
+    </div>
+    <div class="stack">
+      <div><p class="eyebrow">Database</p><b>Google Sheets</b><span>One workbook, 14 tabs, human-editable.</span></div>
+      <div><p class="eyebrow">Backend</p><b>Apps Script</b><span>11 modules: JSON API plus time triggers.</span></div>
+      <div><p class="eyebrow">Merchant UI</p><b>Vanilla JS + canvas</b><span>One self-contained Elementor widget.</span></div>
+      <div><p class="eyebrow">Payout</p><b>CSV in Drive</b><span>Finance pays from a file they already know.</span></div>
+    </div>
+  </section>
+
+  <section id="decisions">
+    <div class="sec-head">
+      <p class="eyebrow">Engineering decisions</p>
+      <h2>The calls that kept it safe</h2>
+    </div>
+    <div class="decisions">
+      <div class="dec"><h3>GET-only API</h3><p class="alt">instead of POST for writes</p><p>Apps Script answers a cross-origin POST with a 302 that drops the body. Designing around it early avoided a launch-day bug.</p></div>
+      <div class="dec"><h3>Prize decided before the scratch</h3><p class="alt">instead of deciding on reveal</p><p>The server is the only source of truth. Closing the tab mid-scratch loses nothing, and the canvas can't be tampered with.</p></div>
+      <div class="dec"><h3>Locked, idempotent redeem</h3><p class="alt">instead of dedupe by card only</p><p>Every write takes a script lock. A retried or double-tapped scratch returns the same prize instead of an error or a second prize.</p></div>
+      <div class="dec"><h3>Raw orders stay read-only</h3><p class="alt">instead of flag columns on the export</p><p>Campaign state lives in its own tabs keyed by order ID, so the upstream export can refresh freely. Cancelled orders void unscratched cards.</p></div>
+      <div class="dec"><h3>Human check before money moves</h3><p class="alt">instead of a direct balance API</p><p>A Thursday job builds one CSV row per merchant. Finance pays Friday, marks the batch DONE, and the system backfills every row.</p></div>
+      <div class="dec"><h3>Test mode inside production</h3><p class="alt">instead of a staging stack</p><p>Eight reserved phone numbers run the real deployed API with fixed outcomes and never touch prize inventory.</p></div>
+    </div>
+  </section>
+
+  <section id="payouts">
+    <div class="sec-head">
+      <p class="eyebrow">Operations</p>
+      <h2>Six Friday payouts, one weekly loop</h2>
+    </div>
+    <div class="loop" id="loop">
+      <div><p class="when">Thu 09:00</p><b>CSV generated</b><span>Cron sums each merchant's queued prizes into Drive.</span></div>
+      <div><p class="when">Thu</p><b>Finance downloads</b><span>Same format their payout tool already takes.</span></div>
+      <div><p class="when">Fri</p><b>Balances credited</b><span>Cash lands in each merchant's BukuAgen balance.</span></div>
+      <div><p class="when">Fri</p><b>Marked DONE</b><span>One status edit marks every row in the batch as sent.</span></div>
+    </div>
+  </section>
+
+  <section id="scale">
+    <div class="two">
+      <div class="sec-head" style="margin:0">
+        <p class="eyebrow">Limits I chose</p>
+        <h2>What I'd change at 10× volume</h2>
+        <p class="lede">At 14,000 cards the spreadsheet was the right tool. Above about 50 concurrent scratches the global lock starts returning "system busy". Past that point I'd move to:</p>
+      </div>
+      <div class="tbl-wrap">
+        <table class="scale-tbl">
+          <thead><tr><th>Today</th><th>At 10×</th></tr></thead>
+          <tbody>
+            <tr><td>Sheets + global lock</td><td>Postgres with row-level transactions</td></tr>
+            <tr><td>Apps Script Web App</td><td>Cloud Run behind a CORS-enabled API</td></tr>
+            <tr><td>Phone number as login</td><td>WhatsApp OTP</td></tr>
+            <tr><td>CSV payout handoff</td><td>Balance API with approval and reconciliation</td></tr>
+            <tr><td>Log inspection</td><td>Alerts on sync failures and payout lag</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap">
+  <div class="foot">
+    <p>Portfolio project by Faqih. All data in the repository and on this page is synthetic; production IDs and merchant data were removed. Screenshots are the real frontend code.</p>
+    <div class="links">
+      <a href="https://github.com/A5-Studio/gosok-berhadiah">Repository</a>
+      <a href="https://github.com/A5-Studio/gosok-berhadiah/blob/main/docs/01-program-design.md">Program design</a>
+      <a href="https://github.com/A5-Studio/gosok-berhadiah/blob/main/docs/02-technical-design.md">Technical design</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.documentElement.classList.add('js');
+  var vh = window.innerHeight || 800;
+  var below = function (el) { return el.getBoundingClientRect().top > vh * 0.9; };
+
+  // Scroll reveals: only elements that start below the fold are hidden, so the first frame is complete.
+  var groups = [['.need', '#brief'], ['.step', '#merchant'], ['.dec', '#decisions'], ['.stack > div', '#system'], ['.rules > div', '#live-draw'], ['.shot', '#live-draw']];
+  var io = 'IntersectionObserver' in window && !reduce ? new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.remove('pre');
+      if (e.target.dataset.onshow) handlers[e.target.dataset.onshow](e.target);
+      io.unobserve(e.target);
+    });
+  }, { threshold: 0.2 }) : null;
+  var handlers = {};
+  function watch(el, fn) {
+    if (!io || !below(el)) { if (fn) handlers[fn] && handlers[fn](el); return; }
+    el.classList.add('pre'); if (fn) el.dataset.onshow = fn; io.observe(el);
+  }
+  groups.forEach(function (g) {
+    document.querySelectorAll(g[1] + ' ' + g[0]).forEach(function (el, i) { el.classList.add('reveal'); el.style.setProperty('--i', i); watch(el); });
+  });
+  document.querySelectorAll('.bar i').forEach(function (el, i) { el.style.setProperty('--i', i); });
+  var bar = document.querySelector('.bar'); if (bar) watch(bar);
+
+  // Picker: step through the rules one line at a time.
+  handlers.picker = function (pre) {
+    var lines = pre.querySelectorAll('.ln'), k = 0;
+    setInterval(function () { lines.forEach(function (l, j) { l.classList.toggle('on', j === k); }); k = (k + 1) % lines.length; }, 1400);
+  };
+  var pc = document.getElementById('pickerCode'); if (pc && !reduce) { pc.dataset.onshow = 'picker'; io ? io.observe(pc) : handlers.picker(pc); }
+
+  // Draw code: roll like the operator panel, then settle. Alphabet has no 0/O/1/I/L.
+  var ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  handlers.roll = function (el) {
+    var final = 'ZEJ4A', t = 0;
+    var id = setInterval(function () {
+      t++; var s = '';
+      for (var i = 0; i < 5; i++) s += t > 8 + i * 4 ? final[i] : ABC[Math.floor(Math.random() * ABC.length)];
+      el.textContent = 'GOSOK-' + s;
+      if (t > 28) clearInterval(id);
+    }, 55);
+  };
+  var dc = document.getElementById('drawCode'); if (dc && !reduce) { dc.dataset.onshow = 'roll'; io ? io.observe(dc) : handlers.roll(dc); }
+
+  // Payout loop: highlight the current step in step with the gold marker.
+  var loop = document.getElementById('loop');
+  if (loop && !reduce) {
+    var steps = loop.children, s = 0;
+    var tick = function () { for (var j = 0; j < steps.length; j++) steps[j].classList.toggle('now', j === s); s = (s + 1) % steps.length; };
+    tick(); setInterval(tick, 1500);
+  }
+
+  // Count-up for the hero facts.
+  if (!reduce) document.querySelectorAll('.count').forEach(function (el) {
+    var to = +el.dataset.to, t0 = null, dur = 1300;
+    function f(ts) { if (!t0) t0 = ts; var p = Math.min(1, (ts - t0) / dur); p = 1 - Math.pow(1 - p, 3); el.textContent = Math.round(to * p).toLocaleString('en-US'); if (p < 1) requestAnimationFrame(f); }
+    requestAnimationFrame(f);
+  });
+
+  // Hero foil: scratches itself off, and the visitor can scratch too.
+  var cv = document.getElementById('foil'), hint = document.getElementById('foilHint');
+  if (!cv || reduce) return;
+  var ctx = cv.getContext('2d'), W, H, dpr = Math.min(2, window.devicePixelRatio || 1), done = false;
+  function paint() {
+    var r = cv.getBoundingClientRect(); W = r.width; H = r.height;
+    if (!W || !H) return false;
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#BDB8AA'); g.addColorStop(.5, '#9C978B'); g.addColorStop(1, '#ABA698');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,255,255,.28)';
+    for (var i = 0; i < 60; i++) { ctx.beginPath(); ctx.arc(Math.random() * W, Math.random() * H, Math.random() * 2.2 + .4, 0, 7); ctx.fill(); }
+    ctx.fillStyle = 'rgba(40,38,32,.55)'; ctx.textAlign = 'center';
+    ctx.font = '700 17px "Plus Jakarta Sans", sans-serif'; ctx.fillText('Gosok di area ini', W / 2, H / 2);
+    ctx.font = '500 12px "Plus Jakarta Sans", sans-serif'; ctx.fillText('sampai hadiah terbuka', W / 2, H / 2 + 20);
+    ctx.globalCompositeOperation = 'destination-out'; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(34, W * .16);
+    return true;
+  }
+  if (!paint()) { cv.classList.add('done'); return; }
+  var last = null;
+  function stroke(x, y) {
+    if (last) { ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(x, y); ctx.stroke(); }
+    last = [x, y];
+  }
+  function finish() { if (done) return; done = true; cv.classList.add('done'); hint.classList.add('gone'); setTimeout(function () { cv.remove(); }, 600); }
+  // Zig-zag path that covers the card, like a thumb rubbing the foil.
+  var path = [], rows = 9;
+  for (var r = 0; r <= rows; r++) { var y = H * (.06 + .88 * r / rows); path.push(r % 2 ? [W * .9, y] : [W * .1, y]); }
+  var auto = true, start = null, dur = 1800;
+  setTimeout(function () {
+    hint.classList.add('gone');
+    function run(ts) {
+      if (!auto) return;
+      if (!start) start = ts;
+      var p = Math.min(1, (ts - start) / dur), f = p * (path.length - 1), k = Math.floor(f), u = f - k;
+      var a = path[k], b = path[Math.min(k + 1, path.length - 1)];
+      stroke(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u + Math.sin(ts / 40) * 6);
+      if (p < 1) requestAnimationFrame(run); else finish();
+    }
+    requestAnimationFrame(run);
+  }, 900);
+  var down = false;
+  cv.addEventListener('pointerdown', function (e) { auto = false; down = true; last = null; hint.classList.add('gone'); var r = cv.getBoundingClientRect(); stroke(e.clientX - r.left, e.clientY - r.top); });
+  cv.addEventListener('pointermove', function (e) { if (!down) return; var r = cv.getBoundingClientRect(); stroke(e.clientX - r.left, e.clientY - r.top); });
+  window.addEventListener('pointerup', function () { if (!down) return; down = false; last = null; setTimeout(finish, 700); });
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'neutral', fontFamily: 'Plus Jakarta Sans, sans-serif' });
+</script>
 </body>
 </html>
