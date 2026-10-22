@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="id" data-mock-source="operator">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gosok Berhadiah — Operator Draw Panel</title>
+<!--
+  DEMO WRAPPER for frontend/draw_operator.html.
+  Changes vs. the original: mock-api.js is loaded first (answers fetch() to
+  script.google.com/macros/... in-browser) and the "Kode Operator" field is
+  prefilled with the mock Apps Script URL so the panel works out of the box.
+-->
+<script src="mock-api.js"></script>
+<style>
+  /* ── Design tokens (mirror index.html) ── */
+  :root {
+    --ga-navy:         #1B3F8B;
+    --ga-navy-dark:    #122c63;
+    --ga-navy-light:   #2a55b3;
+    --ga-gold:         #FFC107;
+    --ga-gold-dark:    #c69100;
+    --ga-cream:        #FFF8E1;
+    --ga-cream-border: #FAC775;
+    --ga-cream-text:   #854F0B;
+    --ga-pink:         #FBEAF0;
+    --ga-pink-border:  #ED93B1;
+    --ga-pink-text:    #72243E;
+    --ga-pink-pill:    #D4537E;
+    --ga-green-bg:     #E1F5EE;
+    --ga-green-text:   #0F6E56;
+    --ga-amber-bg:     #FAEEDA;
+    --ga-amber-text:   #854F0B;
+    --ga-gray-50:      #F8F7F2;
+    --ga-gray-100:     #F1EFE8;
+    --ga-gray-200:     #D3D1C7;
+    --ga-gray-500:     #888780;
+    --ga-gray-700:     #5F5E5A;
+    --ga-gray-900:     #2C2C2A;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--ga-gray-50);
+    color: var(--ga-gray-900);
+    min-height: 100vh;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    background: var(--ga-navy);
+    padding: 28px 20px 36px;
+    text-align: center;
+    color: #fff;
+  }
+  .hero .brand { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; opacity: 0.65; margin-bottom: 8px; }
+  .hero h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+  .hero h1 span { color: var(--ga-gold); }
+  .hero .subtitle { font-size: 12px; opacity: 0.65; margin-top: 6px; }
+  .operator-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: rgba(255,255,255,0.8);
+    margin-top: 12px;
+    text-transform: uppercase;
+  }
+
+  /* ── Page body ── */
+  .page-body { max-width: 560px; margin: 0 auto; padding: 0 16px 60px; }
+
+  /* ── API URL card ── */
+  #apiUrlWrap {
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid var(--ga-gray-200);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+    padding: 16px;
+    margin: -20px 0 20px;
+    position: relative;
+    z-index: 5;
+  }
+  #apiUrlWrap label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--ga-gray-500); display: block; margin-bottom: 6px; }
+  #apiUrl {
+    width: 100%; border: 1px solid var(--ga-gray-200); border-radius: 8px;
+    padding: 9px 12px; font-size: 12px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    background: var(--ga-gray-50); color: var(--ga-gray-900); -webkit-appearance: none;
+  }
+  #apiUrl:focus { outline: none; border-color: var(--ga-navy); background: #fff; }
+
+  /* ── Wave selector ── */
+  .wave-selector { display: flex; gap: 10px; margin-bottom: 20px; }
+  .wave-btn {
+    flex: 1; background: #fff; border: 1.5px solid var(--ga-gray-200);
+    border-radius: 12px; padding: 14px 12px; cursor: pointer;
+    font-family: inherit; text-align: center; transition: all 0.15s;
+  }
+  .wave-btn .wname { font-size: 15px; font-weight: 700; color: var(--ga-gray-700); display: block; }
+  .wave-btn .wdate { font-size: 11px; color: var(--ga-gray-500); margin-top: 3px; display: block; }
+  .wave-btn:hover { border-color: var(--ga-navy); }
+  .wave-btn.active { background: linear-gradient(140deg, var(--ga-navy) 0%, var(--ga-navy-light) 100%); border-color: var(--ga-navy); }
+  .wave-btn.active .wname { color: #fff; }
+  .wave-btn.active .wdate { color: rgba(255,255,255,0.65); }
+
+  /* ── Status ── */
+  #statusMsg { font-size: 13px; color: #c0392b; min-height: 18px; text-align: center; margin-bottom: 12px; }
+
+  /* ── Pool stat pill ── */
+  .pool-stat {
+    background: #fff;
+    border: 1px solid var(--ga-gray-200);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: var(--ga-gray-700);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pool-stat strong { color: var(--ga-navy); }
+
+  /* ── Section label ── */
+  .section-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--ga-gray-500); margin-bottom: 12px;
+  }
+
+  /* ── Prize cards grid ── */
+  .prize-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+
+  .prize-card {
+    background: #fff;
+    border: 1.5px solid var(--ga-gray-200);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .prize-card:hover:not(.done):not(.locked) { border-color: var(--ga-navy); box-shadow: 0 4px 12px rgba(27,63,139,0.1); transform: translateY(-1px); }
+  .prize-card:active:not(.done):not(.locked) { transform: scale(0.99); }
+
+  .prize-card.done { background: var(--ga-green-bg); border-color: #a8dfd0; cursor: default; }
+  .prize-card.locked { opacity: 0.5; cursor: not-allowed; }
+
+  .prize-icon { font-size: 32px; flex-shrink: 0; line-height: 1; }
+
+  .prize-meta { flex: 1; min-width: 0; }
+  .prize-name { font-size: 15px; font-weight: 700; color: var(--ga-gray-900); }
+  .prize-value { font-size: 11px; color: var(--ga-gray-500); margin-top: 2px; }
+
+  .prize-progress { flex-shrink: 0; text-align: right; }
+  .progress-dots { display: flex; gap: 5px; justify-content: flex-end; margin-bottom: 5px; flex-wrap: wrap; max-width: 100px; }
+  .dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--ga-gray-200); border: 1.5px solid var(--ga-gray-200);
+    transition: all 0.2s;
+  }
+  .dot.filled { background: var(--ga-navy); border-color: var(--ga-navy); }
+  .prize-card.done .dot.filled { background: var(--ga-green-text); border-color: var(--ga-green-text); }
+  .progress-label { font-size: 10px; font-weight: 600; color: var(--ga-gray-500); }
+  .prize-card.done .progress-label { color: var(--ga-green-text); }
+
+  .prize-cta {
+    font-size: 11px; font-weight: 700; color: var(--ga-navy);
+    letter-spacing: 0.3px; margin-top: 4px;
+  }
+  .prize-card.done .prize-cta { color: var(--ga-green-text); }
+
+  /* Winner sub-list inside prize card */
+  .prize-winners-list { margin-top: 10px; border-top: 1px solid #a8dfd0; padding-top: 8px; width: 100%; }
+  .prize-winner-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0; font-size: 12px; color: var(--ga-gray-700);
+  }
+  .prize-winner-phone { font-family: 'SF Mono', Menlo, Consolas, monospace; font-weight: 600; color: var(--ga-navy); }
+  .prize-winner-code  { font-size: 10px; color: var(--ga-gray-500); }
+
+  /* ── Draw popup ── */
+  #drawPopup {
+    position: fixed; inset: 0;
+    background: var(--ga-navy);
+    z-index: 9999;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+    color: #fff;
+  }
+  #drawPopup.show { display: flex; animation: gaSlideUp 0.3s cubic-bezier(0.2,0.9,0.3,1); }
+  @keyframes gaSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+  .popup-header {
+    width: 100%; padding: 16px 18px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0;
+  }
+  .popup-close {
+    background: rgba(255,255,255,0.15); border: none;
+    color: #fff; width: 36px; height: 36px; border-radius: 50%;
+    font-size: 18px; cursor: pointer; font-family: inherit;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .popup-close:active { background: rgba(255,255,255,0.25); }
+  .popup-prize-name { font-size: 13px; font-weight: 600; opacity: 0.85; text-align: center; }
+
+  .popup-body {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 16px 24px 32px; text-align: center; width: 100%; overflow-y: auto;
+  }
+
+  /* Phase: rolling */
+  #phaseRolling { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  .rolling-label { font-size: 13px; opacity: 0.7; margin-bottom: 28px; letter-spacing: 0.5px; }
+  .rolling-display {
+    font-size: 42px; font-weight: 900;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    color: var(--ga-gold);
+    letter-spacing: 2px;
+    min-height: 60px;
+    display: flex; align-items: center; justify-content: center;
+    text-shadow: 0 0 30px rgba(255,193,7,0.5);
+    transition: opacity 0.05s;
+    margin-bottom: 8px;
+  }
+  .rolling-sub { font-size: 12px; opacity: 0.55; margin-bottom: 40px; }
+  .btn-stop {
+    background: var(--ga-gold); border: none; color: var(--ga-navy);
+    font-family: inherit; font-size: 20px; font-weight: 900;
+    letter-spacing: 3px; text-transform: uppercase;
+    border-radius: 16px; padding: 20px 64px;
+    cursor: pointer; width: 100%; max-width: 320px;
+    box-shadow: 0 0 40px rgba(255,193,7,0.4);
+    transition: all 0.1s;
+  }
+  .btn-stop:active { transform: scale(0.96); box-shadow: 0 0 20px rgba(255,193,7,0.3); }
+
+  /* Phase: loading (API call) */
+  #phaseLoading { display: none; flex-direction: column; align-items: center; gap: 20px; }
+  .popup-spinner {
+    width: 64px; height: 64px;
+    border: 5px solid rgba(255,255,255,0.2);
+    border-top-color: var(--ga-gold);
+    border-right-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.5s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { font-size: 15px; opacity: 0.8; }
+
+  /* Phase: winner reveal */
+  #phaseReveal { display: none; flex-direction: column; align-items: center; width: 100%; }
+  .reveal-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .reveal-confetti span {
+    position: absolute; width: 8px; height: 12px;
+    top: -20px; animation: fall linear infinite;
+  }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+
+  .reveal-tag { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; opacity: 0.7; margin-bottom: 16px; }
+  .reveal-prize-badge {
+    display: inline-block; padding: 7px 20px; border-radius: 999px;
+    font-size: 14px; font-weight: 700; margin-bottom: 20px;
+  }
+  .badge-smartphone { background: rgba(91,33,182,0.35); border: 1.5px solid #a78bfa; color: #ddd6fe; }
+  .badge-tablet     { background: rgba(0,137,123,0.35); border: 1.5px solid #4dd0e1; color: #b2ebf2; }
+  .badge-cctv       { background: rgba(180,83,9,0.35);  border: 1.5px solid #fbbf24; color: #fde68a; }
+  .badge-other      { background: rgba(255,255,255,0.15); border: 1.5px solid rgba(255,255,255,0.3); color: #fff; }
+
+  .reveal-phone {
+    font-size: 38px; font-weight: 900;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    color: #fff; letter-spacing: 2px; margin-bottom: 8px;
+    animation: popIn 0.4s cubic-bezier(0.2,0.9,0.3,1) both;
+  }
+  @keyframes popIn { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  .reveal-code-box {
+    background: rgba(255,255,255,0.1);
+    border: 1.5px dashed rgba(255,255,255,0.35);
+    border-radius: 12px; padding: 12px 28px;
+    margin: 12px 0 32px; text-align: center;
+    animation: gaFadeIn 0.4s 0.2s both;
+  }
+  @keyframes gaFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .reveal-code-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; opacity: 0.6; text-transform: uppercase; margin-bottom: 4px; }
+  .reveal-code-value { font-size: 24px; font-weight: 800; color: var(--ga-gold); letter-spacing: 3px; font-family: 'SF Mono', Menlo, Consolas, monospace; }
+
+  .btn-konfirmasi {
+    background: #fff; border: none; color: var(--ga-navy);
+    font-family: inherit; font-size: 16px; font-weight: 700;
+    border-radius: 12px; padding: 16px 32px;
+    cursor: pointer; width: 100%; max-width: 320px;
+    transition: all 0.15s;
+    animation: gaFadeIn 0.4s 0.35s both;
+  }
+  .btn-konfirmasi:active { background: var(--ga-gray-100); transform: scale(0.98); }
+
+  .reveal-error { font-size: 14px; opacity: 0.85; margin-bottom: 24px; line-height: 1.5; }
+  .btn-close-popup {
+    background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);
+    color: #fff; font-family: inherit; font-size: 14px; font-weight: 600;
+    border-radius: 10px; padding: 12px 24px; cursor: pointer;
+    animation: gaFadeIn 0.3s both;
+  }
+
+  /* ── Misc ── */
+  .hidden { display: none !important; }
+  .divider { height: 1px; background: var(--ga-gray-200); margin: 20px 0; }
+</style>
+</head>
+<body>
+
+<!-- Draw Popup (full screen) -->
+<div id="drawPopup">
+  <div id="revealConfetti" class="reveal-confetti"></div>
+
+  <div class="popup-header">
+    <button class="popup-close" id="btnClosePopup" onclick="closeDrawPopup()">✕</button>
+    <div class="popup-prize-name" id="popupPrizeName">—</div>
+    <div style="width:36px"></div>
+  </div>
+
+  <div class="popup-body">
+
+    <!-- Phase 1: Rolling -->
+    <div id="phaseRolling">
+      <div class="rolling-label">🎰 Mengundi pemenang…</div>
+      <div class="rolling-display" id="rollingDisplay">0812-XXXX-XXXX</div>
+      <div class="rolling-sub" id="rollingSub">Tekan STOP untuk memilih pemenang</div>
+      <button class="btn-stop" id="btnStop" onclick="stopAndDraw()">STOP</button>
+    </div>
+
+    <!-- Phase 2: Loading (API in progress) -->
+    <div id="phaseLoading">
+      <div class="popup-spinner"></div>
+      <div class="loading-text">Menentukan pemenang…</div>
+    </div>
+
+    <!-- Phase 3a: Winner revealed -->
+    <div id="phaseReveal">
+      <div class="reveal-tag">🏆 SELAMAT — PEMENANG!</div>
+      <div class="reveal-prize-badge" id="revealPrizeBadge"></div>
+      <div class="reveal-phone" id="revealPhone"></div>
+      <div class="reveal-code-box">
+        <div class="reveal-code-label">Kode Undian</div>
+        <div class="reveal-code-value" id="revealCode"></div>
+      </div>
+      <button class="btn-konfirmasi" onclick="confirmAndClose()">✓ &nbsp; Konfirmasi Pemenang</button>
+    </div>
+
+    <!-- Phase 3b: Error -->
+    <div id="phaseError" class="hidden" style="display:none; flex-direction:column; align-items:center;">
+      <div style="font-size:36px; margin-bottom:16px;">⚠️</div>
+      <div class="reveal-error" id="errorMsg"></div>
+      <button class="btn-close-popup" onclick="closeDrawPopup()">Tutup</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="brand">BukuAgen EDC</div>
+  <h1>GOSOK <span>BERHADIAH</span></h1>
+  <div class="subtitle">Live Draw — Internal Use Only</div>
+  <div class="operator-badge">🔒 Operator Panel</div>
+</div>
+
+<div class="page-body">
+
+  <!-- API URL -->
+  <div id="apiUrlWrap">
+    <label>Kode Operator</label>
+    <input type="password" id="apiUrl" placeholder="Masukkan kode operator" autocomplete="off" value="https://script.google.com/macros/s/MOCK_API/exec" />
+  </div>
+
+  <!-- Wave selector -->
+  <div class="wave-selector">
+    <button class="wave-btn" data-wave="wave1" onclick="selectWave('wave1')">
+      <span class="wname">Wave 1</span>
+      <span class="wdate">17 Juni 2026</span>
+    </button>
+    <button class="wave-btn" data-wave="wave2" onclick="selectWave('wave2')">
+      <span class="wname">Wave 2</span>
+      <span class="wdate">8 Juli 2026</span>
+    </button>
+  </div>
+
+  <div id="statusMsg"></div>
+
+  <!-- Pool stat + Perbarui Data -->
+  <div id="poolStatWrap" class="hidden">
+    <div class="pool-stat" style="justify-content:space-between;">
+      <span>🎟️ Pool undian aktif: &nbsp;<strong id="poolCount">—</strong> &nbsp; peserta hadir</span>
+      <button onclick="loadProgress()" style="background:transparent;border:1px solid var(--ga-gray-200);border-radius:8px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:600;color:var(--ga-gray-500);cursor:pointer;">↻ Perbarui Data</button>
+    </div>
+  </div>
+
+  <!-- Prize cards -->
+  <div id="prizeSection" class="hidden">
+    <div class="section-label">Pilih Hadiah untuk Diundi</div>
+    <div class="prize-grid" id="prizeGrid"></div>
+  </div>
+
+</div><!-- /page-body -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let currentWave    = null;
+let currentPrize   = null;  // { grand_prize_id, label, tier, value_idr, drawn, total }
+let rollingTimer   = null;
+let progressData   = null;  // last draw_progress response
+
+const WAVE_LABEL = { wave1: 'Wave 1 — 17 Juni 2026', wave2: 'Wave 2 — 8 Juli 2026' };
+const TIER_ICON  = { smartphone: '📱', tablet: '📟', cctv: '📷' };
+const TIER_ORDER = ['smartphone', 'tablet', 'cctv'];  // display order (most valuable first)
+
+// ── API ────────────────────────────────────────────────────────────────────────
+function getApiUrl() { return document.getElementById('apiUrl').value.trim(); }
+
+async function api(params) {
+  const base = getApiUrl();
+  if (!base) { setStatus('Masukkan Apps Script URL dulu.'); return null; }
+  try {
+    const res = await fetch(base + '?' + new URLSearchParams(params).toString());
+    return await res.json();
+  } catch (e) {
+    setStatus('Gagal terhubung: ' + e.message);
+    return null;
+  }
+}
+
+// ── Status ─────────────────────────────────────────────────────────────────────
+function setStatus(msg, color) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.style.color = color || '#c0392b';
+}
+function clearStatus() { document.getElementById('statusMsg').textContent = ''; }
+
+// ── Wave selection ─────────────────────────────────────────────────────────────
+function selectWave(waveId) {
+  currentWave = waveId;
+  document.querySelectorAll('.wave-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.wave === waveId)
+  );
+  loadProgress();
+}
+
+// ── Load draw progress ─────────────────────────────────────────────────────────
+async function loadProgress() {
+  if (!currentWave) return;
+  clearStatus();
+  setStatus('Memuat data…', '#888780');
+
+  const data = await api({ action: 'draw_progress', wave_id: currentWave });
+  if (!data) return;
+  if (!data.ok) { setStatus('Error: ' + (data.error || JSON.stringify(data))); return; }
+
+  progressData = data;
+  clearStatus();
+
+  // Pool stat
+  document.getElementById('poolStatWrap').classList.remove('hidden');
+  document.getElementById('poolCount').textContent = data.eligible_pool;
+
+  // Prize cards
+  renderPrizeCards(data.prizes || []);
+  document.getElementById('prizeSection').classList.remove('hidden');
+
+  // Debug: log raw response to console
+  console.log('[draw_progress]', JSON.stringify(data, null, 2));
+}
+
+// ── Render prize cards ─────────────────────────────────────────────────────────
+function renderPrizeCards(prizes) {
+  const grid = document.getElementById('prizeGrid');
+  grid.innerHTML = '';
+
+  // Sort by TIER_ORDER, then by label
+  const sorted = [...prizes].sort((a, b) => {
+    const ai = TIER_ORDER.indexOf(a.tier);
+    const bi = TIER_ORDER.indexOf(b.tier);
+    if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    return a.label.localeCompare(b.label);
+  });
+
+  if (prizes.length === 0) {
+    grid.innerHTML = `
+      <div style="background:#fff;border:1px solid var(--ga-gray-200);border-radius:14px;padding:20px 16px;text-align:center;color:var(--ga-gray-500);">
+        <div style="font-size:28px;margin-bottom:10px;">⚠️</div>
+        <div style="font-weight:700;color:var(--ga-gray-700);margin-bottom:6px;">GRAND_PRIZES sheet kosong atau wave_id tidak cocok</div>
+        <div style="font-size:12px;line-height:1.6;">
+          Pastikan sheet <strong>GRAND_PRIZES</strong> sudah ada dan kolom <strong>wave_id</strong>
+          berisi nilai <code style="background:var(--ga-gray-100);padding:1px 5px;border-radius:4px;">wave1</code>
+          (bukan "Wave 1" atau "17 Juni 2026").<br><br>
+          Buka Console browser (F12) untuk melihat raw response API.
+        </div>
+      </div>`;
+    return;
+  }
+
+  sorted.forEach(p => {
+    const isDone   = p.drawn >= p.total;
+    const noPool   = progressData && progressData.eligible_pool === 0 && !isDone;
+    const card     = document.createElement('div');
+    const tierClass = isDone ? 'done' : (noPool ? 'locked' : '');
+    card.className = 'prize-card' + (tierClass ? ' ' + tierClass : '');
+    card.dataset.prizeId = p.grand_prize_id;
+
+    // Progress dots (max 8 shown, rest as number)
+    const showDots = p.total <= 8;
+    let dotsHtml = '';
+    if (showDots) {
+      dotsHtml = '<div class="progress-dots">';
+      for (let i = 0; i < p.total; i++) {
+        dotsHtml += `<div class="dot${i < p.drawn ? ' filled' : ''}"></div>`;
+      }
+      dotsHtml += '</div>';
+    }
+
+    const ctaText = isDone ? '✓ Semua Sudah Diundi' : (noPool ? '⚠ Pool Habis' : '→ Undi Sekarang');
+    const valueText = p.value_idr ? 'Rp ' + Number(p.value_idr).toLocaleString('id-ID') : '';
+
+    // Winners sub-list (only shown when at least one drawn)
+    let winnersHtml = '';
+    if (p.winners && p.winners.length > 0) {
+      winnersHtml = '<div class="prize-winners-list">';
+      p.winners.forEach((w, i) => {
+        winnersHtml += `
+          <div class="prize-winner-row">
+            <span class="prize-winner-phone">0${w.user_id}</span>
+            <span class="prize-winner-code">${w.draw_code || '—'}</span>
+          </div>`;
+      });
+      winnersHtml += '</div>';
+    }
+
+    card.innerHTML = `
+      <div class="prize-icon">${TIER_ICON[p.tier] || '🎁'}</div>
+      <div class="prize-meta">
+        <div class="prize-name">${esc(p.label)}</div>
+        ${valueText ? `<div class="prize-value">${valueText}</div>` : ''}
+        <div class="prize-cta">${ctaText}</div>
+        ${winnersHtml}
+      </div>
+      <div class="prize-progress">
+        ${dotsHtml}
+        <div class="progress-label">${p.drawn} / ${p.total} diundi</div>
+      </div>`;
+
+    if (!isDone && !noPool) {
+      card.addEventListener('click', () => openDrawPopup(p));
+    }
+
+    grid.appendChild(card);
+  });
+}
+
+// ── Open draw popup ────────────────────────────────────────────────────────────
+function openDrawPopup(prize) {
+  currentPrize = prize;
+
+  // Set popup header
+  const slotNum = prize.drawn + 1;
+  document.getElementById('popupPrizeName').textContent =
+    (TIER_ICON[prize.tier] || '🎁') + '  ' + prize.label +
+    (prize.total > 1 ? '  (' + slotNum + '/' + prize.total + ')' : '');
+
+  // Reset rolling state
+  document.getElementById('rollingSub').textContent = 'Tekan STOP untuk memilih pemenang';
+  document.getElementById('btnStop').disabled = false;
+  showPhase('rolling');
+
+  // Open popup
+  document.getElementById('drawPopup').classList.add('show');
+  document.body.style.overflow = 'hidden';
+
+  // Start rolling
+  startRolling();
+}
+
+function closeDrawPopup() {
+  stopRolling();
+  document.getElementById('drawPopup').classList.remove('show');
+  document.body.style.overflow = '';
+  currentPrize = null;
+}
+
+// ── Phase control ──────────────────────────────────────────────────────────────
+function showPhase(phase) {
+  document.getElementById('phaseRolling').style.display  = phase === 'rolling'  ? 'flex' : 'none';
+  document.getElementById('phaseLoading').style.display  = phase === 'loading'  ? 'flex' : 'none';
+  document.getElementById('phaseReveal').style.display   = phase === 'reveal'   ? 'flex' : 'none';
+  document.getElementById('phaseError').style.display    = phase === 'error'    ? 'flex' : 'none';
+  // hide confetti unless reveal
+  document.getElementById('revealConfetti').innerHTML    = '';
+}
+
+// ── Rolling animation ──────────────────────────────────────────────────────────
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function randomCode() {
+  let s = 'GOSOK-';
+  for (let i = 0; i < 5; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  return s;
+}
+
+function startRolling() {
+  const el = document.getElementById('rollingDisplay');
+  rollingTimer = setInterval(() => { el.textContent = randomCode(); }, 70);
+}
+
+function stopRolling() {
+  if (rollingTimer) { clearInterval(rollingTimer); rollingTimer = null; }
+}
+
+// ── Stop button — API + deceleration run in parallel, no loading screen ───────
+async function stopAndDraw() {
+  if (!currentPrize) return;
+
+  // Stop the fast roll, disable button, update hint
+  stopRolling();
+  const btnStop = document.getElementById('btnStop');
+  btnStop.disabled = true;
+  document.getElementById('rollingSub').textContent = 'Menentukan pemenang…';
+
+  // Run API call and deceleration animation in parallel
+  const [data] = await Promise.all([
+    api({ action: 'draw_pick_one', wave_id: currentWave, grand_prize_id: currentPrize.grand_prize_id }),
+    decelerateRolling(),
+  ]);
+
+  if (!data) {
+    showError('Gagal terhubung ke server. Coba lagi.');
+    btnStop.disabled = false;
+    return;
+  }
+  if (!data.ok) {
+    const msgs = {
+      pool_empty:            'Pool sudah habis — tidak ada peserta tersisa.',
+      no_prizes_left:        'Semua slot hadiah ini sudah diundi.',
+      prize_not_in_this_wave:'Hadiah tidak tersedia untuk wave ini.',
+      already_drawn:         'Wave ini sudah selesai diundi.',
+      lock_timeout:          'Sistem sedang sibuk. Tunggu sebentar lalu coba lagi.',
+      wave_not_found:        'Wave tidak ditemukan. Periksa konfigurasi.',
+      prize_not_found:       'Hadiah tidak ditemukan. Periksa GRAND_PRIZES sheet.',
+    };
+    showError(msgs[data.error] || ('Error: ' + (data.error || JSON.stringify(data))));
+    btnStop.disabled = false;
+    return;
+  }
+
+  // Land on the winner's actual draw code, brief pause, then reveal
+  document.getElementById('rollingDisplay').textContent = data.winner.draw_code || '—';
+  await sleep(500);
+  revealWinner(data.winner, data.prize_tier);
+  btnStop.disabled = false;
+}
+
+// Decelerates the rolling animation over ~2.5s, resolves when done
+function decelerateRolling() {
+  return new Promise(resolve => {
+    const el = document.getElementById('rollingDisplay');
+    let delay = 70;
+
+    function step() {
+      el.textContent = randomCode();
+      delay = delay < 500 ? delay * 1.38 : delay;
+      if (delay < 500) {
+        rollingTimer = setTimeout(step, delay);
+      } else {
+        // Last 3 slow ticks before handing off
+        let ticks = 0;
+        function slowTick() {
+          el.textContent = randomCode();
+          ticks++;
+          if (ticks < 3) rollingTimer = setTimeout(slowTick, 500);
+          else resolve();
+        }
+        rollingTimer = setTimeout(slowTick, 500);
+      }
+    }
+    step();
+  });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Reveal winner ──────────────────────────────────────────────────────────────
+function revealWinner(winner, tier) {
+  const BADGE_CLASS = {
+    smartphone: 'badge-smartphone',
+    tablet:     'badge-tablet',
+    cctv:       'badge-cctv',
+  };
+
+  document.getElementById('revealPrizeBadge').className =
+    'reveal-prize-badge ' + (BADGE_CLASS[tier] || 'badge-other');
+  document.getElementById('revealPrizeBadge').textContent =
+    (TIER_ICON[tier] || '🎁') + '  ' + winner.prize_label;
+
+  document.getElementById('revealPhone').textContent = '0' + winner.user_id;
+  document.getElementById('revealCode').textContent  = winner.draw_code || '—';
+
+  showPhase('reveal');
+  spawnConfetti();
+}
+
+function showError(msg) {
+  document.getElementById('errorMsg').textContent = msg;
+  showPhase('error');
+}
+
+// ── Konfirmasi — closes popup, refreshes cards ─────────────────────────────────
+function confirmAndClose() {
+  closeDrawPopup();
+  loadProgress();
+}
+
+// ── Confetti ───────────────────────────────────────────────────────────────────
+function spawnConfetti() {
+  const c = document.getElementById('revealConfetti');
+  c.innerHTML = '';
+  const colors = ['#FFC107','#FF7043','#42A5F5','#66BB6A','#EC407A','#fff'];
+  for (let i = 0; i < 50; i++) {
+    const s = document.createElement('span');
+    s.style.left            = Math.random() * 100 + '%';
+    s.style.background      = colors[Math.floor(Math.random() * colors.length)];
+    s.style.animationDuration = (2 + Math.random() * 2) + 's';
+    s.style.animationDelay  = (Math.random() * 0.5) + 's';
+    s.style.transform       = 'rotate(' + (Math.random() * 360) + 'deg)';
+    s.style.width           = (6 + Math.random() * 6) + 'px';
+    s.style.height          = (8 + Math.random() * 8) + 'px';
+    c.appendChild(s);
+  }
+}
+
+// ── Utility ────────────────────────────────────────────────────────────────────
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])
+  );
+}
+</script>
+</body>
+</html>

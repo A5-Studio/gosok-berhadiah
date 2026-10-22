@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en" data-mock-source="simulator">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prize Engine Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="mock-api.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --navy: #1B3F8B; --navy-dark: #122c63; --gold: #FFC107; --gold-dark: #c69100; --cream: #FFF8E1;
+    --bg: #F8F7F2; --surface: #FFFFFF; --surface-2: #F1EFE8; --border: #E2E0D7;
+    --text: #2C2C2A; --muted: #6B6A64; --accent: var(--navy); --accent-ink: #FFFFFF;
+    --s-with: #1B3F8B; --s-without: #D4537E; --s-budget: #888780; --s-bar: #FFC107;
+    --good: #0F6E56; --bad: #B4233C;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F1420; --surface: #171E2E; --surface-2: #1F2839; --border: #2C3850;
+      --text: #ECEDF1; --muted: #A3A9B8; --accent: #FFC107; --accent-ink: #1B1B1B;
+      --s-with: #7EA6FF; --s-without: #F28DB2; --s-budget: #8C93A3; --s-bar: #FFC107;
+      --good: #5FD3AE; --bad: #FF8A9B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0F1420; --surface: #171E2E; --surface-2: #1F2839; --border: #2C3850;
+    --text: #ECEDF1; --muted: #A3A9B8; --accent: #FFC107; --accent-ink: #1B1B1B;
+    --s-with: #7EA6FF; --s-without: #F28DB2; --s-budget: #8C93A3; --s-bar: #FFC107;
+    --good: #5FD3AE; --bad: #FF8A9B;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { font-family: 'Plus Jakarta Sans', -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 0 0 8px; }
+  p { margin: 0 0 8px; }
+  .muted { color: var(--muted); }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px 18px; align-items: end; }
+  label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  .val { color: var(--text); font-weight: 700; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, input[type=number] { width: 100%; font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
+  .toggle { display: flex; gap: 8px; align-items: center; font-weight: 600; font-size: 13px; cursor: pointer; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+  button.run { font: inherit; font-weight: 700; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; width: 100%; }
+  button.run:disabled { opacity: 0.6; cursor: progress; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .kpi .k { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  .kpi .v { font-size: 20px; font-weight: 800; margin-top: 2px; overflow-wrap: anywhere; }
+  .kpi .s { font-size: 12px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .chartbox { position: relative; height: 300px; }
+  .note { font-size: 12.5px; color: var(--muted); }
+  .note code, p code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .callout { border-left: 4px solid var(--gold); background: var(--surface-2); padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+  .good { color: var(--good); } .bad { color: var(--bad); }
+  .fallback { display: none; padding: 12px; font-size: 13px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .chartbox { height: 260px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Prize engine simulator</h1>
+    <p class="muted">Runs the real <code>pickPrize()</code> port from <code>mock-api.js</code> (05_PrizePicker.gs) against a fresh copy of the
+      CASH_PRIZES seed (5k×8666, 10k×2317, 20k×2000, 50k×500, 100k×150, 200k×50 = Rp 156,5 jt) with a seeded RNG.
+      Each cash win applies the same inventory writes as <code>redeemCardInner()</code>.</p>
+    <div class="controls">
+      <div>
+        <label for="n">Scratches <span class="val" id="nVal"></span> <span class="muted">(plan: 14.000)</span></label>
+        <input type="range" id="n" min="1000" max="20000" step="500" value="18000">
+      </div>
+      <div>
+        <label for="ratio">Draw pool ratio <span class="val" id="ratioVal"></span></label>
+        <input type="range" id="ratio" min="0.01" max="0.10" step="0.005" value="0.03">
+      </div>
+      <div>
+        <label for="days">Days in campaign <span class="val" id="daysVal"></span></label>
+        <input type="range" id="days" min="7" max="45" step="1" value="38">
+      </div>
+      <div>
+        <label for="curve">Demand curve</label>
+        <select id="curve">
+          <option value="spike" selected>Launch spike (front-loaded)</option>
+          <option value="flat">Flat</option>
+          <option value="ramp">Slow ramp (back-loaded)</option>
+        </select>
+      </div>
+      <div>
+        <label for="seed">RNG seed</label>
+        <input type="number" id="seed" value="42" min="1" step="1">
+      </div>
+      <div>
+        <label class="toggle"><input type="checkbox" id="smooth" checked> Daily-quota smoothing</label>
+        <div class="note" style="margin-top:2px">Drives tier and KPI views. The spend chart always shows both.</div>
+      </div>
+      <div><button class="run" id="run">Run simulation</button></div>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="card">
+    <h2>Cumulative cash spend per day: with vs without smoothing</h2>
+    <p class="note">Bars show scratches per day (right axis). Without per-day quotas the picker only gates on inventory,
+      so a launch spike burns through the budget early. After that, every later scratch is forced into the draw pool
+      (<code>eligibleTiers.length === 0</code>). With quotas, each day's tier cap is <code>ceil(total_qty / days)</code>.</p>
+    <div class="chartbox"><canvas id="spendChart" role="img" aria-label="Cumulative spend per day with and without smoothing"></canvas></div>
+    <div class="fallback" id="fb1">Chart.js could not load from cdnjs. The KPIs above are still computed.</div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Tier distribution vs budget <span class="muted" id="tierMode"></span></h2>
+      <p class="note">Prizes awarded vs total inventory per tier. The weight is <code>remaining_qty × weight_multiplier</code>, so picks track the budget mix.</p>
+      <div class="chartbox"><canvas id="tierChart" role="img" aria-label="Awarded vs budget per tier"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Draw entries per day</h2>
+      <p class="note">About <span id="ratioTxt"></span> of scratches roll a draw. Anything above that is a forced draw on a day with no cash tier available.</p>
+      <div class="chartbox"><canvas id="drawChart" role="img" aria-label="Draw entries per day with and without smoothing"></canvas></div>
+    </div>
+  </div>
+
+  <div class="callout" id="takeaway"></div>
+</div>
+
+<script>
+(function () {
+  var E = window.MockAPI && window.MockAPI.engine;
+  var $ = function (id) { return document.getElementById(id); };
+  var charts = {};
+  var START = '2026-06-01';
+
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function rp(n) { return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
+  function rpShort(n) { return n >= 1e6 ? 'Rp ' + (n / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' jt' : rp(n); }
+
+  function syncLabels() {
+    $('nVal').textContent = Number($('n').value).toLocaleString('id-ID');
+    $('ratioVal').textContent = (Number($('ratio').value) * 100).toFixed(1) + '%';
+    $('daysVal').textContent = $('days').value;
+    $('ratioTxt').textContent = (Number($('ratio').value) * 100).toFixed(1) + '%';
+  }
+
+  /** Splits n scratches across d days by the chosen demand curve (largest remainder). */
+  function demand(n, d, curve) {
+    var w = [];
+    for (var i = 0; i < d; i++) {
+      w.push(curve === 'flat' ? 1 : curve === 'ramp' ? (i + 1) : Math.exp(-i / Math.max(1, d / 4)) + 0.25);
+    }
+    var sum = w.reduce(function (a, b) { return a + b; }, 0);
+    var raw = w.map(function (x) { return x / sum * n; });
+    var out = raw.map(Math.floor), left = n - out.reduce(function (a, b) { return a + b; }, 0);
+    raw.map(function (x, i) { return { i: i, r: x - Math.floor(x) }; }).sort(function (a, b) { return b.r - a.r; })
+      .slice(0, left).forEach(function (o) { out[o.i]++; });
+    return out;
+  }
+
+  function simulate(opts, smoothing) {
+    var startMs = E.toDate(START).getTime();
+    var endDate = E.fmtDate(new Date(startMs + (opts.days - 1) * 86400000));
+    var db = E.makeDb({ rand: E.mulberry32(opts.seed) });
+    db.headers[E.SHEET.CASH_PRIZES] = E.CASH_PRIZE_HEADERS.slice();
+    db.headers[E.SHEET.CASH_PRIZE_DAILY_QUOTAS] = E.QUOTA_HEADERS.slice();
+    db.headers[E.SHEET.CONFIG] = ['key', 'value', 'description'];
+    db.tables[E.SHEET.CASH_PRIZES] = E.buildCashPrizeRows();
+    db.tables[E.SHEET.CASH_PRIZE_DAILY_QUOTAS] = smoothing ? E.buildDailyQuotaRows(START, endDate) : [];
+    db.tables[E.SHEET.CONFIG] = [{ key: 'draw_pool_ratio', value: String(opts.ratio), description: '' }];
+
+    var perDay = demand(opts.n, opts.days, opts.curve);
+    var tierCount = {}, spendCum = [], drawsDay = [], spend = 0, draws = 0, exhaustedDay = null;
+    E.CASH_PRIZE_SEED.forEach(function (p) { tierCount[p.cash_prize_id] = 0; });
+    for (var d = 0; d < opts.days; d++) {
+      var dayMs = startMs + d * 86400000, dDraws = 0, k = perDay[d];
+      for (var s = 0; s < k; s++) {
+        var now = new Date(dayMs + (8 * 3600 + (s / Math.max(1, k)) * 14 * 3600) * 1000); // 08:00–22:00 WIB
+        var pick = E.pickPrize(db, now);
+        if (pick.outcome_type === 'cash') {
+          E.recordCashWin(db, pick.cash_prize_id, now);
+          tierCount[pick.cash_prize_id]++; spend += pick.value_idr;
+        } else { draws++; dDraws++; }
+      }
+      var invLeft = db.tables[E.SHEET.CASH_PRIZES].reduce(function (a, p) { return a + Number(p.remaining_qty); }, 0);
+      if (invLeft === 0 && exhaustedDay === null) exhaustedDay = d + 1;
+      spendCum.push(spend); drawsDay.push(dDraws);
+    }
+    return { perDay: perDay, tierCount: tierCount, spendCum: spendCum, drawsDay: drawsDay, spend: spend, draws: draws, exhaustedDay: exhaustedDay };
+  }
+
+  function chart(id, cfg) {
+    if (!window.Chart) { $('fb1').style.display = 'block'; return; }
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart($(id), cfg);
+  }
+
+  function run() {
+    if (!E) { $('takeaway').textContent = 'mock-api.js engine not available.'; return; }
+    var opts = { n: Number($('n').value), ratio: Number($('ratio').value), days: Number($('days').value),
+      curve: $('curve').value, seed: Number($('seed').value) || 1 };
+    var smooth = $('smooth').checked;
+    $('run').disabled = true; $('run').textContent = 'Running…';
+    setTimeout(function () {
+      var t0 = performance.now();
+      var withS = simulate(opts, true), without = simulate(opts, false);
+      var ms = Math.round(performance.now() - t0);
+      var cur = smooth ? withS : without;
+      var budget = E.CASH_PRIZE_SEED.reduce(function (a, p) { return a + p.total_qty * p.value_idr; }, 0);
+      var expectedDraws = Math.round(opts.n * opts.ratio);
+      var labels = withS.perDay.map(function (_, i) { return E.fmtDateId(new Date(E.toDate(START).getTime() + i * 86400000)).replace(' 2026', ''); });
+      var lastHalf = Math.floor(opts.days / 2);
+      var lateCash = function (r) { return r.spendCum[opts.days - 1] - (r.spendCum[lastHalf - 1] || 0); };
+
+      $('kpis').innerHTML = [
+        ['Cash paid out', rpShort(cur.spend), (cur.spend / budget * 100).toFixed(1) + '% of ' + rpShort(budget) + ' budget'],
+        ['Draw entries', cur.draws.toLocaleString('id-ID'), '≈' + expectedDraws.toLocaleString('id-ID') + ' expected from ratio'],
+        ['Forced draws', Math.max(0, cur.draws - expectedDraws).toLocaleString('id-ID'), 'no cash tier was available'],
+        ['Budget exhausted', without.exhaustedDay ? '<span class="bad">Day ' + without.exhaustedDay + '</span>' : '<span class="good">Never</span>', 'without smoothing'],
+        ['Cash paid in 2nd half', rpShort(lateCash(cur)), smooth ? 'with smoothing' : 'without smoothing'],
+      ].map(function (k) { return '<div class="kpi"><div class="k">' + k[0] + '</div><div class="v">' + k[1] + '</div><div class="s">' + k[2] + '</div></div>'; }).join('');
+      $('tierMode').textContent = smooth ? '(smoothing on)' : '(smoothing off)';
+
+      var grid = css('--border'), muted = css('--muted');
+      Chart.defaults && (Chart.defaults.font.family = "'Plus Jakarta Sans', -apple-system, sans-serif", Chart.defaults.color = muted);
+      var scaleBase = { grid: { color: grid }, ticks: { color: muted } };
+
+      chart('spendChart', {
+        data: { labels: labels, datasets: [
+          { type: 'line', label: 'With smoothing', data: withS.spendCum, borderColor: css('--s-with'), backgroundColor: css('--s-with'), borderWidth: 2.5, pointRadius: 0, yAxisID: 'y', tension: 0.15 },
+          { type: 'line', label: 'Without smoothing', data: without.spendCum, borderColor: css('--s-without'), backgroundColor: css('--s-without'), borderWidth: 2.5, pointRadius: 0, yAxisID: 'y', tension: 0.15 },
+          { type: 'line', label: 'Total budget', data: labels.map(function () { return budget; }), borderColor: css('--s-budget'), borderDash: [6, 5], borderWidth: 1.5, pointRadius: 0, yAxisID: 'y' },
+          { type: 'bar', label: 'Scratches / day', data: withS.perDay, backgroundColor: css('--s-bar') + '4D', borderWidth: 0, yAxisID: 'y2' },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { labels: { boxWidth: 12 } }, tooltip: { callbacks: { label: function (c) { return c.dataset.label + ': ' + (c.dataset.yAxisID === 'y' ? rp(c.parsed.y) : c.parsed.y.toLocaleString('id-ID')); } } } },
+          scales: { x: Object.assign({}, scaleBase, { ticks: { color: muted, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } }),
+            y: Object.assign({}, scaleBase, { position: 'left', ticks: { color: muted, callback: function (v) { return rpShort(v); } } }),
+            y2: { position: 'right', grid: { display: false }, ticks: { color: muted } } } },
+      });
+
+      chart('tierChart', {
+        type: 'bar',
+        data: { labels: E.CASH_PRIZE_SEED.map(function (p) { return p.value_idr / 1000 + 'k'; }), datasets: [
+          { label: 'Budget (total_qty)', data: E.CASH_PRIZE_SEED.map(function (p) { return p.total_qty; }), backgroundColor: css('--s-budget') + '88', borderRadius: 4 },
+          { label: 'Awarded', data: E.CASH_PRIZE_SEED.map(function (p) { return cur.tierCount[p.cash_prize_id]; }), backgroundColor: css('--s-with'), borderRadius: 4 },
+        ] },
+        options: { maintainAspectRatio: false, plugins: { legend: { labels: { boxWidth: 12 } },
+          tooltip: { callbacks: { afterLabel: function (c) { var p = E.CASH_PRIZE_SEED[c.dataIndex]; return rp(c.parsed.y * p.value_idr); } } } },
+          scales: { x: scaleBase, y: Object.assign({}, scaleBase, { type: 'logarithmic' }) } },
+      });
+
+      chart('drawChart', {
+        type: 'bar',
+        data: { labels: labels, datasets: [
+          { label: 'With smoothing', data: withS.drawsDay, backgroundColor: css('--s-with'), borderRadius: 3 },
+          { label: 'Without smoothing', data: without.drawsDay, backgroundColor: css('--s-without'), borderRadius: 3 },
+        ] },
+        options: { maintainAspectRatio: false, plugins: { legend: { labels: { boxWidth: 12 } } },
+          scales: { x: Object.assign({}, scaleBase, { ticks: { color: muted, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } }), y: scaleBase } },
+      });
+
+      var msg;
+      if (without.exhaustedDay) {
+        msg = '<strong>Without smoothing the cash budget runs out on day ' + without.exhaustedDay + '.</strong> After that, every merchant who scratches gets only a draw ticket (' +
+          without.draws.toLocaleString('id-ID') + ' draws total). With daily quotas, cash keeps flowing to the end: ' + rpShort(lateCash(withS)) +
+          ' is paid in the second half of the campaign, compared with ' + rpShort(lateCash(without)) + ' without. The trade-off is ' + Math.max(0, withS.draws - expectedDraws).toLocaleString('id-ID') +
+          ' extra draw entries on spike days, plus leftover inventory that <code>regenerateDailyQuotas()</code> can spread over the remaining days.';
+      } else {
+        msg = 'At this volume the cash budget never runs out. The plan sized inventory (13.683 cash prizes) to about 97% of 14.000 scratches. Smoothing then mostly caps how much goes out on spike days, which turns some spike-day scratches into draw tickets. Push scratches above plan with the launch-spike curve to see the burn-out it protects against.';
+      }
+      $('takeaway').innerHTML = msg + ' <span class="muted">(' + (opts.n * 2).toLocaleString('id-ID') + ' picks in ' + ms + ' ms)</span>';
+      $('run').disabled = false; $('run').textContent = 'Run simulation';
+    }, 30);
+  }
+
+  ['n', 'ratio', 'days'].forEach(function (id) { $(id).addEventListener('input', syncLabels); });
+  ['n', 'ratio', 'days', 'curve', 'seed', 'smooth'].forEach(function (id) { $(id).addEventListener('change', run); });
+  $('run').addEventListener('click', run);
+  try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', run); } catch (e) { }
+  syncLabels();
+  if (document.readyState === 'complete') run(); else window.addEventListener('load', run);
+})();
+</script>
+</body>
+</html>

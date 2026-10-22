@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 345" width="300" height="345">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1B3F8B"/><stop offset="1" stop-color="#122C63"/></linearGradient>
+    <linearGradient id="cup" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFE38A"/><stop offset="0.55" stop-color="#FFC107"/><stop offset="1" stop-color="#C69100"/></linearGradient>
+  </defs>
+  <rect width="300" height="345" fill="url(#bg)"/>
+  <g fill="#FFC107" opacity="0.5"><circle cx="40" cy="60" r="3"/><circle cx="262" cy="48" r="4"/><circle cx="250" cy="170" r="3"/><circle cx="36" cy="200" r="4"/><circle cx="80" cy="30" r="2"/><circle cx="220" cy="110" r="2"/></g>
+  <g fill="#ED93B1" opacity="0.7"><rect x="58" y="96" width="8" height="8" transform="rotate(25 62 100)"/><rect x="230" y="210" width="8" height="8" transform="rotate(40 234 214)"/></g>
+  <text x="150" y="44" text-anchor="middle" font-family="'Plus Jakarta Sans',-apple-system,'Segoe UI',Roboto,sans-serif" font-size="14" font-weight="800" letter-spacing="3" fill="#FFC107">HADIAH SPESIAL</text>
+  <path d="M110 80 h80 v30 c0 34 -18 56 -40 60 c-22 -4 -40 -26 -40 -60z" fill="url(#cup)" stroke="#C69100" stroke-width="3"/>
+  <path d="M110 92 h-18 c0 26 12 38 26 40" fill="none" stroke="#FFC107" stroke-width="7" stroke-linecap="round"/>
+  <path d="M190 92 h18 c0 26 -12 38 -26 40" fill="none" stroke="#FFC107" stroke-width="7" stroke-linecap="round"/>
+  <rect x="140" y="170" width="20" height="22" fill="#C69100"/>
+  <rect x="118" y="192" width="64" height="14" rx="3" fill="#FFC107"/>
+  <text x="150" y="128" text-anchor="middle" font-family="'Plus Jakarta Sans',-apple-system,'Segoe UI',Roboto,sans-serif" font-size="26" font-weight="800" fill="#7A4B00">★</text>
+  <text x="150" y="246" text-anchor="middle" font-family="'Plus Jakarta Sans',-apple-system,'Segoe UI',Roboto,sans-serif" font-size="22" font-weight="800" fill="#FFFFFF">Masuk Pool Undian</text>
+  <text x="150" y="274" text-anchor="middle" font-family="'Plus Jakarta Sans',-apple-system,'Segoe UI',Roboto,sans-serif" font-size="15" font-weight="700" fill="#FFC107">Grand Prize LIVE</text>
+  <text x="150" y="296" text-anchor="middle" font-family="'Plus Jakarta Sans',-apple-system,'Segoe UI',Roboto,sans-serif" font-size="12" font-weight="600" fill="#FFFFFF" opacity="0.75">Smartphone · Tablet · Smart CCTV</text>
+  <text x="150" y="328" text-anchor="middle" font-family="'Plus Jakarta Sans',-apple-system,'Segoe UI',Roboto,sans-serif" font-size="11" font-weight="600" fill="#FFFFFF" opacity="0.45">DEMO ASSET · bukan gambar asli</text>
+</svg>

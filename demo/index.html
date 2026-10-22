@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en" data-mock-source="shell">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gosok Berhadiah Demo</title>
+<meta name="description" content="Interactive, fully static demo of the Gosok Berhadiah scratch-card campaign: merchant widget, live-draw operator panel and prize-engine simulator over an in-browser port of the Apps Script backend.">
+<link rel="icon" href="assets/prize-draw.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<!-- The backend port lives on this (parent) window; the iframes reuse it via window.parent.MockAPI. -->
+<script src="mock-api.js"></script>
+<style>
+  :root {
+    --navy: #1B3F8B; --navy-dark: #122c63; --gold: #FFC107; --gold-dark: #c69100;
+    --cream: #FFF8E1; --cream-border: #FAC775; --cream-text: #854F0B;
+    --bg: #F6F4EC; --surface: #FFFFFF; --surface-2: #F1EFE8; --border: #E2E0D7;
+    --text: #2C2C2A; --muted: #6B6A64; --accent: var(--navy); --accent-ink: #FFFFFF;
+    --chip-bg: #FFFFFF; --chip-border: #D3D1C7;
+    --ok: #0F6E56; --ok-bg: #E1F5EE; --err: #B4233C; --err-bg: #FBE7EA;
+    --code-bg: #F8F7F2; --phone: #1C1C1E;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0D1220; --surface: #161D2D; --surface-2: #1E2738; --border: #2B3650;
+      --text: #ECEDF1; --muted: #A3A9B8; --accent: #FFC107; --accent-ink: #1A1A1A;
+      --chip-bg: #1B2335; --chip-border: #34405A;
+      --cream: #2A2416; --cream-border: #6B5520; --cream-text: #FFD66B;
+      --ok: #5FD3AE; --ok-bg: #12352C; --err: #FF8A9B; --err-bg: #3A1820;
+      --code-bg: #111827; --phone: #000000;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0D1220; --surface: #161D2D; --surface-2: #1E2738; --border: #2B3650;
+    --text: #ECEDF1; --muted: #A3A9B8; --accent: #FFC107; --accent-ink: #1A1A1A;
+    --chip-bg: #1B2335; --chip-border: #34405A;
+    --cream: #2A2416; --cream-border: #6B5520; --cream-text: #FFD66B;
+    --ok: #5FD3AE; --ok-bg: #12352C; --err: #FF8A9B; --err-bg: #3A1820;
+    --code-bg: #111827; --phone: #000000;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; overflow-x: hidden; }
+  button { font: inherit; }
+  code, pre { font-family: var(--mono); }
+  a { color: inherit; }
+
+  .topbar { background: var(--navy); color: #fff; }
+  .topbar-inner { max-width: 1440px; margin: 0 auto; padding: 18px 16px 16px; display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: flex-end; justify-content: space-between; }
+  .brand-kicker { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; opacity: .7; }
+  h1 { margin: 2px 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.4px; }
+  h1 span { color: var(--gold); }
+  .tagline { font-size: 13px; opacity: .85; max-width: 640px; margin: 4px 0 0; }
+  .banner { background: var(--cream); color: var(--cream-text); border-bottom: 1px solid var(--cream-border); }
+  .banner-inner { max-width: 1440px; margin: 0 auto; padding: 8px 16px; font-size: 13px; font-weight: 600; }
+
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 16px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .clock { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; min-width: 0; }
+  .clock label { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .clock input { font: inherit; font-size: 13px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); min-width: 0; max-width: 100%; color-scheme: light dark; }
+  .clock .live { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .preset { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--chip-border); background: var(--chip-bg); color: var(--text); cursor: pointer; }
+  .preset:hover { border-color: var(--accent); }
+  .btn { font-weight: 700; font-size: 13px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.danger { border-color: var(--err); color: var(--err); }
+  .btn.armed { background: var(--err); color: #fff; border-color: var(--err); }
+  .spacer { flex: 1; }
+
+  .quick { margin-bottom: 16px; }
+  .quick-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 0; padding: 7px 11px; border-radius: 12px; border: 1px solid var(--chip-border); background: var(--chip-bg); color: var(--text); cursor: pointer; max-width: 100%; }
+  .chip:hover, .chip:focus-visible { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .chip .uid { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  .chip .lbl { font-size: 12.5px; font-weight: 700; }
+  .chip .nt { font-size: 11px; color: var(--muted); }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
+  .panel-col { min-width: 0; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
+  .tab { flex: none; padding: 10px 14px; font-weight: 700; font-size: 14px; color: var(--muted); background: none; border: 0; border-bottom: 3px solid transparent; cursor: pointer; }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--gold); }
+  .tabpanel[hidden] { display: none; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; min-width: 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+
+  /* Merchant tab */
+  .merchant-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 24px; align-items: start; }
+  .phone { width: 390px; height: 800px; background: var(--phone); border-radius: 46px; padding: 12px; box-shadow: 0 20px 50px rgba(0,0,0,.18); position: relative; }
+  .phone::before { content: ""; position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: 110px; height: 26px; background: #000; border-radius: 20px; z-index: 2; }
+  .phone iframe { width: 100%; height: 100%; border: 0; border-radius: 36px; background: #fff; display: block; }
+  .howto ol { margin: 8px 0 0; padding-left: 20px; }
+  .howto li { margin-bottom: 6px; }
+  .howto h2, .card h2 { font-size: 15px; margin: 0 0 6px; }
+
+  /* Operator + simulator */
+  .op-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .op-tools select { font: inherit; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  .op-result { font-size: 13px; margin-bottom: 12px; }
+  .op-result:empty { display: none; }
+  .op-result table { border-collapse: collapse; margin-top: 6px; }
+  .op-result td { padding: 2px 14px 2px 0; }
+  .frame-viewport { height: calc(100vh - 32px); max-height: 960px; min-height: 560px; }
+  .frame-auto { width: 100%; border: 1px solid var(--border); border-radius: 14px; display: block; background: var(--surface); min-height: 600px; }
+
+  /* Data tables */
+  .data-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .data-tools select { font: inherit; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); max-width: 100%; }
+  .table-wrap { overflow: auto; max-height: 640px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+  table.sheet { border-collapse: separate; border-spacing: 0; font-size: 12px; font-family: var(--mono); width: max-content; min-width: 100%; }
+  table.sheet th, table.sheet td { padding: 5px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: left; max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+  table.sheet th { position: sticky; top: 0; background: var(--surface-2); font-weight: 600; z-index: 1; }
+  table.sheet td.rn, table.sheet th.rn { color: var(--muted); text-align: right; position: sticky; left: 0; background: var(--surface-2); }
+  table.sheet tr.flash td { animation: flash 1.6s ease-out; }
+  @keyframes flash { from { background: color-mix(in srgb, var(--gold) 45%, transparent); } to { background: transparent; } }
+  .pill { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .pill.err { background: var(--err-bg); color: var(--err); }
+
+  /* Inspector */
+  .inspector { position: sticky; top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); min-width: 0; }
+  .insp-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .insp-head h2 { font-size: 14px; margin: 0; }
+  .insp-head .count { font-size: 12px; color: var(--muted); }
+  .insp-head .btn { padding: 4px 10px; font-size: 12px; }
+  .insp-sub { padding: 8px 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .insp-list { overflow-y: auto; flex: 1; min-height: 120px; }
+  .insp-empty { padding: 18px 14px; color: var(--muted); font-size: 13px; }
+  details.entry { border-bottom: 1px solid var(--border); }
+  details.entry summary { list-style: none; cursor: pointer; padding: 8px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; }
+  details.entry summary::-webkit-details-marker { display: none; }
+  details.entry.new summary { animation: flash 1.4s ease-out; }
+  .e-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .e-dot.err { background: var(--err); }
+  .e-action { font-family: var(--mono); font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .e-meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .e-sum { grid-column: 2 / 4; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .e-body { padding: 0 14px 12px; }
+  .e-body .lbl { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin: 6px 0 2px; }
+  .e-body pre { margin: 0; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 11.5px; overflow: auto; max-height: 360px; white-space: pre; }
+  .e-body .btn { margin-top: 8px; padding: 4px 10px; font-size: 12px; }
+
+  .arch { margin-top: 16px; }
+  .arch p { margin: 0 0 6px; }
+  footer { max-width: 1440px; margin: 0 auto; padding: 8px 16px 32px; font-size: 12px; color: var(--muted); }
+
+  @media (max-width: 1180px) {
+    .layout { grid-template-columns: minmax(0, 1fr) 340px; }
+    .merchant-grid { grid-template-columns: minmax(0, 1fr); }
+    .phone { margin: 0 auto; }
+  }
+  @media (max-width: 920px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .inspector { position: static; max-height: 70vh; }
+  }
+  @media (max-width: 520px) {
+    h1 { font-size: 20px; }
+    .phone { width: 100%; height: 740px; padding: 0; border-radius: 16px; background: none; box-shadow: none; border: 1px solid var(--border); overflow: hidden; }
+    .phone::before { display: none; }
+    .phone iframe { border-radius: 16px; }
+    .chip { flex: 1 1 calc(50% - 8px); }
+    .chip .nt { display: none; }
+    .clock { width: 100%; }
+    .controls .spacer { display: none; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div>
+      <div class="brand-kicker">BukuAgen EDC · Portfolio demo</div>
+      <h1>Gosok Berhadiah <span>— Live Demo</span></h1>
+      <p class="tagline">A digital scratch-card campaign. Merchants scratch cards to win commission cash or a ticket for a live-streamed grand-prize draw.
+        Production ran on Google Sheets, an Apps Script JSON API and a WordPress widget.</p>
+    </div>
+  </div>
+</header>
+<div class="banner" role="note"><div class="banner-inner">All data is synthetic. Backend is simulated in-browser by a JS port of the Apps Script code.</div></div>
+
+<div class="wrap">
+  <div class="controls">
+    <div class="clock">
+      <label for="clockInput">Simulated clock (WIB)</label>
+      <input type="datetime-local" id="clockInput" step="60" min="2026-05-25T00:00" max="2026-07-31T23:59">
+      <span class="live" id="clockLive" aria-live="off"></span>
+      <button class="preset" data-at="2026-06-12T10:00">12 Jun · Wave 1</button>
+      <button class="preset" data-at="2026-06-20T10:00">20 Jun · Wave 2</button>
+      <button class="preset" data-at="2026-07-09T09:00">9 Jul · past cutoff</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn danger" id="resetBtn" title="Re-seed every mock sheet and clear the inspector">Reset demo data</button>
+  </div>
+
+  <section class="quick" aria-label="Test UIDs">
+    <div class="quick-title">Quick start: tap a test number to open it in the merchant widget</div>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <div class="layout">
+    <div class="panel-col">
+      <div class="tabs" role="tablist" aria-label="Demo views">
+        <button class="tab" role="tab" id="tab-merchant" aria-controls="panel-merchant" aria-selected="true">Merchant</button>
+        <button class="tab" role="tab" id="tab-operator" aria-controls="panel-operator" aria-selected="false" tabindex="-1">Operator draw</button>
+        <button class="tab" role="tab" id="tab-simulator" aria-controls="panel-simulator" aria-selected="false" tabindex="-1">Prize simulator</button>
+        <button class="tab" role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1">Data tables</button>
+      </div>
+
+      <section class="tabpanel" role="tabpanel" id="panel-merchant" aria-labelledby="tab-merchant">
+        <div class="merchant-grid">
+          <div class="phone"><iframe id="merchantFrame" src="merchant.html" title="Merchant scratch widget"></iframe></div>
+          <div class="card howto">
+            <h2>Merchant widget</h2>
+            <p class="muted small">This is the production WordPress/Elementor widget, unchanged. Its <code>fetch()</code> calls to the Apps Script URL are answered by <code>mock-api.js</code>.</p>
+            <ol class="small">
+              <li>Tap a quick-start number above, or type one into the widget and press <b>Cek</b>.</li>
+              <li>Tap <b>Gosok di sini sekarang!</b> The redeem call picks the prize on the server before you scratch.</li>
+              <li>Drag across the grey layer. Once about 50% is cleared, the card reveals the prize and the celebration screen opens.</li>
+              <li>Watch the <b>API inspector</b>: <code>lookup</code>, then <code>redeem</code>, then a fresh <code>lookup</code> when you close the popup.</li>
+              <li>Open <b>Data tables</b> to see the new REDEMPTIONS / KOMISI_DISBURSEMENTS / DRAW_ENTRIES rows.</li>
+            </ol>
+            <p class="muted small">Numbers starting 80000000 are the backend's own <b>dummy-mode</b> test UIDs. Their outcomes are fixed and they can be re-scratched.
+              Numbers starting 0812-0000 go through the production path and the real weighted picker.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="tabpanel" role="tabpanel" id="panel-operator" aria-labelledby="tab-operator" hidden>
+        <div class="card" style="margin-bottom:12px">
+          <h2>Live-draw operator panel</h2>
+          <p class="muted small">The panel below is the production <code>draw_operator.html</code>. Pick a wave, choose a prize, press STOP, and it calls <code>draw_pick_one</code>.
+            Only draw-ticket holders who registered in the attendance form (FORM_LIVE) are in the pool.
+            The buttons here call the other operator endpoints directly.</p>
+          <div class="op-tools">
+            <select id="opWave" aria-label="Wave"><option value="wave1">Wave 1 · 17 Jun</option><option value="wave2">Wave 2 · 8 Jul</option></select>
+            <button class="btn" id="opPreflight">draw_preflight</button>
+            <button class="btn" id="opWinners">draw_winners</button>
+            <button class="btn danger" id="opRun" title="One-shot bulk draw. Marks the wave as drawn.">draw_run (bulk)</button>
+          </div>
+          <p class="muted small" style="margin:0 0 8px">Use either one-by-one picks or <code>draw_run</code> for a wave, not both. Ported faithfully, <code>draw_run</code> doesn't subtract slots already awarded by <code>draw_pick_one</code>, so mixing them over-awards.</p>
+          <div class="op-result" id="opResult" aria-live="polite"></div>
+        </div>
+        <iframe class="frame-auto frame-viewport" id="operatorFrame" data-src="operator.html" title="Operator draw panel"></iframe>
+      </section>
+
+      <section class="tabpanel" role="tabpanel" id="panel-simulator" aria-labelledby="tab-simulator" hidden>
+        <iframe class="frame-auto" id="simulatorFrame" data-src="simulator.html" title="Prize engine simulator"></iframe>
+      </section>
+
+      <section class="tabpanel" role="tabpanel" id="panel-data" aria-labelledby="tab-data" hidden>
+        <div class="data-tools">
+          <select id="sheetSelect" aria-label="Sheet"></select>
+          <span class="muted small" id="sheetInfo"></span>
+          <div class="spacer"></div>
+          <button class="btn" id="opsConfirm" title="Sets waiting_for_ops_at_ts on 8120000044's order, then runs syncOrders()">Ops-confirm 0812-0000-0044 + sync</button>
+          <button class="btn" id="syncBtn">Run syncOrders()</button>
+        </div>
+        <p class="small" id="dataMsg" aria-live="polite" style="margin:0 0 8px"></p>
+        <div class="table-wrap" id="tableWrap"></div>
+        <p class="muted small" style="margin-top:8px">These are the in-memory sheets the JS port reads and writes. They mirror the Google Sheets tab names and headers.
+          Rows highlight when they change, and state persists in localStorage.</p>
+      </section>
+
+      <div class="card arch">
+        <h2>How this demo works</h2>
+        <p class="small">The real system has 4 parts. <b>Raw Order Data</b> lives in Google Sheets. A 2-hourly <code>syncOrders()</code> mints scratch cards for eligible orders (Saku = 1 card, Android = 2).
+          A <code>doGet</code> JSON router serves the widget and operator panel. A weekly job handles disbursements.</p>
+        <p class="small">Here every <code>.gs</code> function the endpoints touch is ported 1:1 to <code>demo/mock-api.js</code> and runs against a JS object shaped like the workbook. That covers eligibility, the weighted picker with daily quotas, idempotent redeem, wave assignment and the attendance-gated draw.
+          The two HTML frontends are the original files, with <code>window.fetch</code> patched underneath them.</p>
+      </div>
+    </div>
+
+    <aside class="inspector" aria-label="API inspector">
+      <div class="insp-head">
+        <h2>API inspector</h2><span class="count" id="logCount"></span>
+        <div class="spacer"></div>
+        <button class="btn" id="clearLog">Clear</button>
+      </div>
+      <div class="insp-sub">Every <code>GET …/exec?action=…</code> from any frame, newest first. Replay a redeem to see idempotency.</div>
+      <div class="insp-list" id="inspList"><div class="insp-empty">No requests yet. Look up a number in the merchant widget.</div></div>
+    </aside>
+  </div>
+</div>
+<footer>Synthetic data only. Phone numbers use the reserved-looking 0812-0000-xxxx pattern, and names are generated. Prize badges are local SVG placeholders.</footer>
+
+<script>
+(function () {
+  var API = window.MockAPI;
+  var E = API.engine;
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function fmtPhone(uid) { return uid.indexOf('812') === 0 ? '0' + uid.slice(0, 3) + '-' + uid.slice(3, 7) + '-' + uid.slice(7) : uid; }
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  function selectTab(tab) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      var panel = $(t.getAttribute('aria-controls'));
+      panel.hidden = !on;
+      if (on) {
+        var lazy = panel.querySelector('iframe[data-src]');
+        if (lazy && !lazy.getAttribute('src')) lazy.setAttribute('src', lazy.getAttribute('data-src'));
+        if (panel.id === 'panel-data') renderTable();
+      }
+    });
+    try { localStorage.setItem('gosokDemo.tab', tab.id); } catch (e) { }
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { selectTab(t); });
+    t.addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      var n = tabs[(i + d + tabs.length) % tabs.length]; n.focus(); selectTab(n);
+    });
+  });
+
+  // ── Auto-size same-origin iframes (operator, simulator) ──────────────────
+  function autosize(frame) {
+    frame.addEventListener('load', function () {
+      try {
+        var doc = frame.contentDocument;
+        var fit = function () { frame.style.height = Math.max(600, doc.documentElement.scrollHeight + 4) + 'px'; };
+        fit();
+        if (window.ResizeObserver) new ResizeObserver(fit).observe(doc.body);
+        else setInterval(fit, 800);
+      } catch (e) { frame.style.height = '1400px'; }
+    });
+  }
+  autosize($('simulatorFrame')); // operator keeps a viewport-height frame so its fixed popup stays on screen
+
+  // ── Quick-start chips ────────────────────────────────────────────────────
+  $('chips').innerHTML = API.demoUids.map(function (d) {
+    return '<button class="chip" data-uid="' + esc(d.uid) + '" title="' + esc(d.note) + '">' +
+      '<span class="uid">' + esc(fmtPhone(d.uid)) + '</span><span class="lbl">' + esc(d.label) + '</span><span class="nt">' + esc(d.note) + '</span></button>';
+  }).join('');
+  $('chips').addEventListener('click', function (e) {
+    var chip = e.target.closest('.chip'); if (!chip) return;
+    selectTab($('tab-merchant'));
+    $('merchantFrame').src = 'merchant.html?uid=' + encodeURIComponent(chip.dataset.uid) + '&t=' + Date.now();
+    if (window.matchMedia('(max-width: 1180px)').matches) $('merchantFrame').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // ── Simulated clock ──────────────────────────────────────────────────────
+  function syncClock(force) {
+    var ts = E.fmtTs(API.now()); // yyyy-MM-dd HH:mm:ss WIB
+    $('clockLive').textContent = 'now ' + ts.slice(5, 16) + ' WIB';
+    if (force || document.activeElement !== $('clockInput')) $('clockInput').value = ts.slice(0, 16).replace(' ', 'T');
+  }
+  $('clockInput').addEventListener('change', function () {
+    if (!this.value) return;
+    API.setNow(this.value + ':00+07:00');
+    syncClock(true);
+  });
+  document.querySelectorAll('.preset').forEach(function (b) {
+    b.addEventListener('click', function () { API.setNow(b.dataset.at + ':00+07:00'); syncClock(true); });
+  });
+  syncClock(true);
+  setInterval(function () { syncClock(false); }, 15000);
+
+  // ── Reset ────────────────────────────────────────────────────────────────
+  $('resetBtn').addEventListener('click', function () {
+    API.reset();
+    $('inspList').innerHTML = '<div class="insp-empty">Demo data re-seeded. No requests yet.</div>';
+    logCount = 0; $('logCount').textContent = '';
+    $('merchantFrame').src = 'merchant.html';
+    ['operatorFrame', 'simulatorFrame'].forEach(function (id) { var f = $(id); if (f.getAttribute('src')) f.src = f.getAttribute('data-src'); });
+    $('opResult').innerHTML = '';
+    lastSnapshot = {};
+    syncClock(true);
+  });
+
+  // ── API inspector ────────────────────────────────────────────────────────
+  var logCount = 0;
+  function summarize(entry) {
+    var r = entry.response || {}, p = entry.params || {};
+    if (!r.ok) return (r.error || 'error') + (r.message ? ': ' + r.message : '');
+    switch (entry.action) {
+      case 'lookup': return 'uid ' + p.uid + ' → ' + r.state + (r.is_dummy ? ' (dummy)' : '') + (r.summary ? ' · ' + r.summary.total_cards + ' card(s)' : '');
+      case 'redeem': return (r.duplicate ? 'REPLAY · ' : '') + r.outcome_type + (r.cash_prize ? ' Rp ' + Number(r.cash_prize.value_idr).toLocaleString('id-ID') : '') + (r.draw_entry ? ' ' + r.draw_entry.draw_code + ' (' + r.draw_entry.wave_id + ')' : '');
+      case 'draw_preflight': return r.wave_id + ': pool ' + r.eligible_pool + '/' + r.total_draw_entries + ', ' + r.prizes_to_award + ' prizes';
+      case 'draw_pick_one': return r.prize_label + ' ' + r.drawn + '/' + r.total + ' → ' + (r.winner ? r.winner.draw_code : '');
+      case 'draw_progress': return r.wave_id + ': pool ' + r.eligible_pool + ' · ' + (r.prizes || []).map(function (x) { return x.tier + ' ' + x.drawn + '/' + x.total; }).join(', ');
+      case 'draw_run': return r.wave_id + ': ' + (r.winners || []).length + ' winners';
+      case 'draw_winners': return r.wave_id + ': ' + (r.winners || []).length + ' winners';
+      case 'health': return 'ts ' + r.ts;
+      default: return '';
+    }
+  }
+  function addEntry(entry, isNew) {
+    var list = $('inspList');
+    var empty = list.querySelector('.insp-empty'); if (empty) empty.remove();
+    var d = document.createElement('details');
+    d.className = 'entry' + (isNew ? ' new' : '');
+    var ok = entry.response && entry.response.ok;
+    var t = new Date(entry.at);
+    var qs = Object.keys(entry.params).filter(function (k) { return k !== 'user_agent'; })
+      .map(function (k) { return k + '=' + entry.params[k]; }).join('&');
+    d.innerHTML = '<summary><span class="e-dot' + (ok ? '' : ' err') + '"></span>' +
+      '<span class="e-action">' + esc(entry.action) + '</span>' +
+      '<span class="e-meta">' + esc(entry.source) + ' · ' + entry.ms + 'ms · ' + t.toTimeString().slice(0, 8) + '</span>' +
+      '<span class="e-sum">' + esc(summarize(entry)) + '</span></summary>' +
+      '<div class="e-body"><div class="lbl">Request (sim ' + esc(entry.sim_now) + ' WIB)</div><pre>GET …/exec?' + esc(qs) + '</pre>' +
+      '<div class="lbl">Response</div><pre>' + esc(JSON.stringify(entry.response, null, 2)) + '</pre>' +
+      (entry.action === 'redeem' && entry.params.idempotency_key ? '<button class="btn replay">Replay with same idempotency_key</button>' : '') +
+      '</div>';
+    var btn = d.querySelector('.replay');
+    if (btn) btn.addEventListener('click', function () { API.request(entry.url, { source: 'inspector-replay' }); });
+    list.insertBefore(d, list.firstChild);
+    while (list.children.length > 120) list.removeChild(list.lastChild);
+    logCount++;
+    $('logCount').textContent = logCount + (logCount === 1 ? ' request' : ' requests');
+  }
+  API.getLog().forEach(function (e) { addEntry(e, false); });
+  API.onLog(function (e) { addEntry(e, true); });
+  $('clearLog').addEventListener('click', function () {
+    API.clearLog(); logCount = 0; $('logCount').textContent = '';
+    $('inspList').innerHTML = '<div class="insp-empty">Cleared.</div>';
+  });
+
+  // ── Operator helper buttons ──────────────────────────────────────────────
+  function opFrameRefresh() {
+    try { var w = $('operatorFrame').contentWindow; if (w && w.loadProgress) w.loadProgress(); } catch (e) { } // no-op until a wave is selected
+  }
+  $('opPreflight').addEventListener('click', function () {
+    $('opResult').textContent = 'Loading…';
+    API.call('draw_preflight', { wave_id: $('opWave').value }).then(function (r) {
+      if (!r.ok) { $('opResult').innerHTML = '<span class="pill err">' + esc(r.error) + '</span>'; return; }
+      $('opResult').innerHTML = '<b>Preflight · ' + esc(r.wave_label) + '</b> ' + (r.already_drawn ? '<span class="pill err">already drawn</span>' : '<span class="pill ok">not drawn yet</span>') +
+        '<table><tr><td>Pending draw tickets</td><td><b>' + r.total_draw_entries + '</b></td></tr>' +
+        '<tr><td>Unique form attendees</td><td><b>' + r.total_form_attendees + '</b></td></tr>' +
+        '<tr><td>Eligible pool (ticket + attended)</td><td><b>' + r.eligible_pool + '</b></td></tr>' +
+        '<tr><td>Tickets without attendance</td><td><b>' + r.non_attendee_entries + '</b></td></tr>' +
+        '<tr><td>Prizes to award</td><td><b>' + r.prizes_to_award + '</b> (' + r.prize_summary.map(function (p) { return p.count + '× ' + esc(p.label); }).join(', ') + ')</td></tr></table>';
+    });
+  });
+  $('opWinners').addEventListener('click', function () {
+    $('opResult').textContent = 'Loading…';
+    API.call('draw_winners', { wave_id: $('opWave').value }).then(function (r) {
+      $('opResult').innerHTML = '<b>Winners · ' + esc(r.wave_id) + '</b>' + (r.winners.length ? '<table>' + r.winners.map(function (w) {
+        return '<tr><td>0' + esc(w.user_id) + '</td><td>' + esc(w.draw_code) + '</td><td>' + esc(w.prize_label) + '</td></tr>';
+      }).join('') + '</table>' : ' <span class="muted">none yet</span>');
+    });
+  });
+  var armTimer = null;
+  $('opRun').addEventListener('click', function () {
+    var b = this;
+    if (!b.classList.contains('armed')) {
+      b.classList.add('armed'); b.textContent = 'Click again to run draw_run';
+      clearTimeout(armTimer);
+      armTimer = setTimeout(function () { b.classList.remove('armed'); b.textContent = 'draw_run (bulk)'; }, 4000);
+      return;
+    }
+    clearTimeout(armTimer); b.classList.remove('armed'); b.textContent = 'draw_run (bulk)';
+    $('opResult').textContent = 'Running…';
+    API.call('draw_run', { wave_id: $('opWave').value }).then(function (r) {
+      if (!r.ok) { $('opResult').innerHTML = '<span class="pill err">' + esc(r.error) + '</span>'; return; }
+      $('opResult').innerHTML = '<b>draw_run · ' + esc(r.wave_id) + '</b>: ' + r.winners.length + ' winners, ' + r.not_drawn_attended +
+        ' attended but not picked, ' + r.not_drawn_absent + ' absent (forfeited).' +
+        '<table>' + r.winners.map(function (w) { return '<tr><td>0' + esc(w.user_id) + '</td><td>' + esc(w.draw_code) + '</td><td>' + esc(w.prize_label) + '</td></tr>'; }).join('') + '</table>';
+      opFrameRefresh();
+    });
+  });
+
+  // ── Data tables ──────────────────────────────────────────────────────────
+  var currentSheet = 'SCRATCH_CARDS', lastSnapshot = {};
+  try { currentSheet = localStorage.getItem('gosokDemo.sheet') || currentSheet; } catch (e) { }
+  function fillSelect() {
+    var names = API.sheetNames();
+    if (names.indexOf(currentSheet) === -1) currentSheet = names[0];
+    $('sheetSelect').innerHTML = names.map(function (n) {
+      return '<option value="' + esc(n) + '"' + (n === currentSheet ? ' selected' : '') + '>' + esc(n) + ' (' + API.tables[n].length + ')</option>';
+    }).join('');
+  }
+  function cell(v) {
+    if (v === true) return 'TRUE'; if (v === false) return 'FALSE';
+    return esc(v);
+  }
+  function renderTable() {
+    fillSelect();
+    var rows = API.tables[currentSheet] || [], headers = API.headers[currentSheet] || [];
+    var prev = lastSnapshot[currentSheet] || null;
+    var html = '<table class="sheet"><thead><tr><th class="rn">#</th>' + headers.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>';
+    var snap = [];
+    rows.forEach(function (r, i) {
+      var key = JSON.stringify(r); snap.push(key);
+      var changed = prev && prev[i] !== key;
+      html += '<tr' + (changed ? ' class="flash"' : '') + '><td class="rn">' + (i + 2) + '</td>' + headers.map(function (h) {
+        var v = r[h]; return '<td title="' + esc(v) + '">' + cell(v) + '</td>';
+      }).join('') + '</tr>';
+    });
+    html += '</tbody></table>';
+    if (!rows.length) html += '<div class="insp-empty">No rows yet.</div>';
+    lastSnapshot[currentSheet] = snap;
+    $('tableWrap').innerHTML = html;
+    $('sheetInfo').textContent = rows.length + ' rows · ' + headers.length + ' columns';
+  }
+  $('sheetSelect').addEventListener('change', function () {
+    currentSheet = this.value;
+    try { localStorage.setItem('gosokDemo.sheet', currentSheet); } catch (e) { }
+    renderTable();
+  });
+  $('syncBtn').addEventListener('click', function () { var r = API.admin.syncOrders(); $('dataMsg').textContent = 'syncOrders(): scanned ' + r.orders_scanned + ' orders, minted cards for ' + r.new_minted_this_run + ', voided ' + r.voided + '.'; });
+  $('opsConfirm').addEventListener('click', function () {
+    var n = API.admin.confirmOps('8120000044');
+    var r = API.admin.syncOrders();
+    $('dataMsg').textContent = 'Confirmed ' + n + ' order(s). syncOrders() minted cards for ' + r.new_minted_this_run + ' order(s). Look up 0812-0000-0044 again to see the card.';
+  });
+  var changeTimer = null;
+  API.onChange(function () {
+    clearTimeout(changeTimer);
+    changeTimer = setTimeout(function () { if (!$('panel-data').hidden) renderTable(); else fillSelect(); syncClock(true); }, 120);
+  });
+  // Seed snapshots so the first visit doesn't flash every row.
+  API.sheetNames().forEach(function (n) { lastSnapshot[n] = (API.tables[n] || []).map(function (r) { return JSON.stringify(r); }); });
+
+  // Restore last tab
+  var savedTab = null;
+  try { savedTab = localStorage.getItem('gosokDemo.tab'); } catch (e) { }
+  var hashTab = { '#merchant': 'tab-merchant', '#operator': 'tab-operator', '#simulator': 'tab-simulator', '#data': 'tab-data' }[location.hash];
+  var initial = $(hashTab || savedTab || 'tab-merchant') || $('tab-merchant');
+  selectTab(initial);
+})();
+</script>
+</body>
+</html>

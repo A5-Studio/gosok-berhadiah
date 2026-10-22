@@ -1,0 +1,1848 @@
+<!DOCTYPE html>
+<html lang="id" data-mock-source="merchant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gosok Berhadiah — Merchant Widget (Demo)</title>
+<!--
+  DEMO WRAPPER for frontend/scratch_widget.html.
+  Changes vs. the original widget (everything else is byte-for-byte the same):
+    1. This standalone page shell (doctype, head, body background).
+    2. mock-api.js is loaded BEFORE the widget so its fetch() calls to
+       script.google.com/macros/... are answered by the in-browser backend port.
+    3. PRIZE_IMG URLs point to local synthetic SVG badges in ./assets instead of
+       hotlinking bukuwarung.com.
+-->
+<script src="mock-api.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #F1EFE8; min-height: 100%; }
+  body { -webkit-text-size-adjust: 100%; }
+</style>
+</head>
+<body>
+<!--
+  GOSOK BERHADIAH — WordPress / Elementor HTML widget (v7)
+  =========================================================
+  Changes from v6:
+    - Reminder/disbursement note logic reworked for 3 distinct states:
+        State A — all cards unscratched:
+          Show full reminder box (image-2 style) with disbursement + grand prize + deadline info
+        State B — mix (some scratched, some unscratched still remain):
+          Same full reminder box as State A
+        State C — all scratched, NO draw tickets:
+          Show disbursement-only note (no Grand Prize / @bukuwarung_ mention)
+        State D — all scratched, HAS draw ticket(s):
+          Show draw-focused note (tune in to livestream) — existing behaviour kept
+    - renderAllScratched(): summary row "Kartu berhadiah aktif" now hidden when count is 0
+    - renderAllScratched(): disbursement note is now context-aware (draw vs no-draw)
+    - draw code masked value updated from "GSK-••••" to "GOSOK-•••••" (5-char suffix)
+
+  BACKEND PREREQUISITES (must be in place first):
+    - DRAW_ENTRIES sheet has a 'draw_code' column
+    - 04_Redeem.gs generates the code at scratch time
+    - 03_Lookup.gs and 04_Redeem.gs return draw_code in their responses
+
+  BEFORE PASTING:
+  1. Update API_URL constant below with your Apps Script /exec URL
+  2. Test by visiting that URL with ?action=health — should return {"ok":true,...}
+-->
+
+<div id="gosok-app">
+    <div class="ga-hero">
+        <h1 class="ga-hero-title">👇 Gosok Kartu Berhadiah Juragan di sini! 👇</h1>
+        <p class="ga-hero-sub">Masukkan nomor HP yang Juragan gunakan saat membeli EDC BukuAgen.</p>
+    </div>
+    <div class="ga-uid-card">
+        <div class="ga-uid-row">
+            <input class="ga-uid-input" id="ga-uid-input" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" />
+            <button class="ga-uid-btn" id="ga-check-btn">Cek</button>
+        </div>
+    </div>
+    <div class="ga-body" id="ga-body"></div>
+</div>
+
+<div class="ga-scratch-popup" id="ga-scratch-popup">
+    <div class="ga-confetti-bg" id="ga-confetti-bg"></div>
+
+    <div class="ga-scratch-header">
+        <button class="ga-close-btn" id="ga-close-btn" aria-label="Tutup">✕</button>
+        <div class="ga-scratch-card-num" id="ga-popup-card-num">KARTU BERHADIAH</div>
+        <div class="ga-scratch-spacer"></div>
+    </div>
+
+    <div class="ga-popup-body" id="ga-popup-body">
+        <!-- celebration header removed per copywriter direction -->
+        <div class="ga-celeb-header" id="ga-celeb-header"></div>
+
+        <div class="ga-scratch-instructions" id="ga-scratch-instructions">
+            <h2 class="ga-scratch-title">Gosok kartu &amp; buka hadiah Juragan!</h2>
+        </div>
+
+        <p class="ga-celeb-greeting" id="ga-celeb-greeting"></p>
+
+        <div class="ga-scratch-arena" id="ga-scratch-arena">
+            <div class="ga-prize-layer" id="ga-prize-layer"></div>
+            <canvas class="ga-scratch-canvas" id="ga-scratch-canvas"></canvas>
+            <div class="ga-scratch-loading" id="ga-scratch-loading">
+                <div class="ga-spinner"></div>
+                <span>Sebentar...</span>
+            </div>
+        </div>
+
+        <p class="ga-scratch-footer-hint" id="ga-scratch-hint">Gosok di area ini sampai hadiah terbuka</p>
+
+        <div class="ga-celeb-footer" id="ga-celeb-footer">
+            <div class="ga-celeb-headline" id="ga-celeb-headline">
+                <p class="ga-celeb-headline-pre" id="ga-celeb-headline-pre"></p>
+                <h2 class="ga-celeb-headline-big" id="ga-celeb-headline-big"></h2>
+                <p class="ga-celeb-headline-post" id="ga-celeb-headline-post"></p>
+            </div>
+            <div class="ga-celeb-status-pill" id="ga-celeb-status-pill"></div>
+            <div class="ga-celeb-draw-code" id="ga-celeb-draw-code"></div>
+            <p class="ga-celeb-msg" id="ga-celeb-msg"></p>
+            <div class="ga-celeb-actions">
+                <button class="ga-celeb-btn secondary full-width" id="ga-celeb-close">Tutup</button>
+            </div>
+            <p class="ga-celeb-footnote" id="ga-celeb-footnote"></p>
+        </div>
+    </div>
+</div>
+
+<div class="ga-toast" id="ga-toast"></div>
+
+<style>
+    #gosok-app,
+    #gosok-app *,
+    .ga-scratch-popup,
+    .ga-scratch-popup *,
+    .ga-toast {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    #gosok-app {
+        --ga-navy: #1B3F8B;
+        --ga-navy-dark: #122c63;
+        --ga-gold: #FFC107;
+        --ga-gold-dark: #c69100;
+        --ga-cream: #FFF8E1;
+        --ga-cream-border: #FAC775;
+        --ga-cream-text: #854F0B;
+        --ga-pink: #FBEAF0;
+        --ga-pink-border: #ED93B1;
+        --ga-pink-text: #72243E;
+        --ga-pink-pill: #D4537E;
+        --ga-green-bg: #E1F5EE;
+        --ga-green-text: #0F6E56;
+        --ga-amber-bg: #FAEEDA;
+        --ga-amber-text: #854F0B;
+        --ga-gray-50: #F8F7F2;
+        --ga-gray-100: #F1EFE8;
+        --ga-gray-200: #D3D1C7;
+        --ga-gray-500: #888780;
+        --ga-gray-700: #5F5E5A;
+        --ga-gray-900: #2C2C2A;
+
+        max-width: 420px;
+        margin: 0 auto;
+        background: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: var(--ga-gray-900);
+        border-radius: 0;
+        overflow: hidden;
+        position: relative;
+    }
+
+    #gosok-app h1,
+    #gosok-app h2,
+    #gosok-app h3,
+    #gosok-app p,
+    .ga-scratch-popup h1,
+    .ga-scratch-popup h2,
+    .ga-scratch-popup p {
+        margin: 0;
+        padding: 0;
+        font-family: inherit;
+        line-height: 1.3;
+        color: inherit;
+        font-weight: inherit;
+    }
+
+    #gosok-app button,
+    .ga-scratch-popup button {
+        font-family: inherit;
+        border: 0;
+        cursor: pointer;
+        margin: 0;
+        line-height: 1;
+    }
+
+    #gosok-app input {
+        font-family: inherit;
+        margin: 0;
+    }
+
+    .ga-hero {
+        background: var(--ga-navy);
+        padding: 28px 20px 32px;
+        color: #fff;
+        text-align: center;
+        padding-top: max(28px, env(safe-area-inset-top));
+    }
+
+    .ga-hero-title {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0 0 10px !important;
+        letter-spacing: -0.3px;
+        color: #fff;
+        line-height: 1.25;
+    }
+
+    .ga-hero-sub {
+        font-size: 13px;
+        opacity: 0.85;
+        color: #fff;
+        line-height: 1.5;
+    }
+
+    .ga-uid-card {
+        background: #fff;
+        border-radius: 14px;
+        padding: 16px;
+        margin: -18px 18px 0;
+        border: 1px solid #e5e3da;
+        position: relative;
+        z-index: 5;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    .ga-uid-row {
+        display: flex;
+        gap: 8px;
+    }
+
+    .ga-uid-input {
+        flex: 1;
+        border: 1px solid var(--ga-gray-200);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 14px;
+        background: var(--ga-gray-50);
+        color: var(--ga-gray-900);
+        -webkit-appearance: none;
+        width: auto;
+    }
+
+    .ga-uid-input:focus {
+        outline: none;
+        border-color: var(--ga-navy);
+        background: #fff;
+    }
+
+    .ga-uid-btn {
+        background: var(--ga-navy);
+        color: #fff;
+        border-radius: 8px;
+        padding: 0 18px;
+        font-size: 13px;
+        font-weight: 600;
+        min-width: 72px;
+        height: auto;
+    }
+
+    .ga-uid-btn:active {
+        background: var(--ga-navy-dark);
+    }
+
+    .ga-body {
+        padding: 22px 18px 28px;
+    }
+
+    .ga-loading {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--ga-gray-500);
+        font-size: 13px;
+    }
+
+    .ga-order-block {
+        margin-bottom: 18px;
+    }
+
+    .ga-order-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        gap: 8px;
+    }
+
+    .ga-order-meta {
+        font-size: 11px;
+        color: var(--ga-gray-500);
+    }
+
+    .ga-order-prod {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ga-gray-900);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .ga-badge-quota {
+        font-size: 10px;
+        background: var(--ga-green-bg);
+        color: var(--ga-green-text);
+        padding: 2px 7px;
+        border-radius: 999px;
+        font-weight: 600;
+    }
+
+    .ga-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 999px;
+    }
+
+    .ga-status-pending {
+        background: var(--ga-amber-bg);
+        color: var(--ga-amber-text);
+    }
+
+    .ga-status-ready {
+        background: var(--ga-green-bg);
+        color: var(--ga-green-text);
+    }
+
+    .ga-status-scratched {
+        background: var(--ga-gray-100);
+        color: var(--ga-gray-700);
+    }
+
+    .ga-cards-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .ga-cards-grid.single {
+        grid-template-columns: 1fr;
+        max-width: 60%;
+    }
+
+    .ga-card-tile {
+        border-radius: 14px;
+        padding: 16px 12px;
+        text-align: center;
+        position: relative;
+        min-height: 148px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        border: 1px solid transparent;
+        transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .ga-card-tile.clickable {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .ga-card-tile.clickable:active {
+        transform: scale(0.97);
+    }
+
+    .ga-card-tile.unscratched {
+        background: linear-gradient(140deg, var(--ga-navy) 0%, #2a55b3 100%);
+        color: #fff;
+        box-shadow: 0 4px 14px rgba(27, 63, 139, 0.25);
+    }
+
+    .ga-card-tile.unscratched:active {
+        box-shadow: 0 2px 8px rgba(27, 63, 139, 0.18);
+    }
+
+    .ga-card-num {
+        font-size: 10px;
+        opacity: 0.75;
+        margin-bottom: 10px;
+        letter-spacing: 0.6px;
+        font-weight: 600;
+    }
+
+    .ga-scratch-circle {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 10px;
+        background: var(--ga-gold);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--ga-navy);
+        font-size: 26px;
+        font-weight: 600;
+        box-shadow: 0 3px 10px rgba(255, 193, 7, 0.4);
+    }
+
+    .ga-scratch-label {
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .ga-card-tile.cash-win {
+        background: var(--ga-cream);
+        border-color: var(--ga-cream-border);
+        box-shadow: 0 2px 8px rgba(255, 193, 7, 0.18);
+    }
+
+    .ga-cash-amount {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--ga-cream-text);
+        margin: 4px 0 2px;
+    }
+
+    .ga-cash-tier {
+        font-size: 10px;
+        color: var(--ga-cream-text);
+        opacity: 0.8;
+    }
+
+    .ga-cash-label-small {
+        font-size: 11px;
+        color: var(--ga-cream-text);
+        opacity: 0.85;
+        margin-bottom: 2px;
+    }
+
+    .ga-tap-hint {
+        font-size: 9px;
+        color: var(--ga-cream-text);
+        opacity: 0.6;
+        margin-top: 6px;
+        letter-spacing: 0.3px;
+        font-weight: 600;
+    }
+
+    .ga-card-tile.draw-win {
+        background: var(--ga-pink);
+        border-color: var(--ga-pink-border);
+        box-shadow: 0 2px 8px rgba(212, 83, 126, 0.15);
+    }
+
+    .ga-card-tile.draw-win .ga-tap-hint {
+        color: var(--ga-pink-text);
+        opacity: 0.65;
+    }
+
+    .ga-draw-pill {
+        font-size: 9px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: var(--ga-pink-pill);
+        color: #fff;
+        display: inline-block;
+        margin: 0 auto 6px;
+        letter-spacing: 0.4px;
+    }
+
+    .ga-draw-label {
+        font-size: 12px;
+        color: var(--ga-pink-text);
+        font-weight: 600;
+        line-height: 1.3;
+        margin: 4px 0;
+    }
+
+    .ga-draw-date {
+        font-size: 10px;
+        color: var(--ga-pink-text);
+        opacity: 0.75;
+    }
+
+    /* Inline draw code on the card tile — masked by default, revealed on tap */
+    .ga-draw-code {
+        margin: 8px auto 0;
+        background: rgba(212, 83, 126, 0.12);
+        border: 1px dashed var(--ga-pink-border);
+        border-radius: 8px;
+        padding: 5px 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--ga-pink-text);
+        cursor: pointer;
+        user-select: none;
+        letter-spacing: 0.3px;
+        transition: background 0.15s;
+    }
+
+    .ga-draw-code:active {
+        background: rgba(212, 83, 126, 0.22);
+    }
+
+    .ga-draw-code-label {
+        font-size: 9px;
+        opacity: 0.65;
+        letter-spacing: 0.5px;
+        font-weight: 700;
+    }
+
+    .ga-draw-code-value {
+        font-family: 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 12px;
+    }
+
+    .ga-draw-code-toggle {
+        font-size: 11px;
+        opacity: 0.7;
+    }
+
+    .ga-empty-state {
+        text-align: center;
+        padding: 14px 8px 0;
+    }
+
+    .ga-empty-icon {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 14px;
+        background: var(--ga-cream);
+        color: var(--ga-cream-text);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+    }
+
+    .ga-empty-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0 0 8px !important;
+    }
+
+    .ga-empty-desc {
+        font-size: 13px;
+        color: var(--ga-gray-700);
+        margin: 0 0 18px !important;
+        line-height: 1.5;
+    }
+
+    .ga-cta-btn {
+        background: var(--ga-navy);
+        color: #fff;
+        border-radius: 8px;
+        padding: 11px 18px;
+        font-size: 14px;
+        font-weight: 600;
+        width: 100%;
+        height: auto;
+    }
+
+    .ga-disbursement-note {
+        font-size: 12px;
+        color: var(--ga-gray-700);
+        background: var(--ga-gray-50);
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-top: 16px;
+        line-height: 1.5;
+    }
+
+    .ga-disbursement-note strong {
+        color: var(--ga-gray-900);
+        font-weight: 600;
+    }
+
+    .ga-summary-card {
+        background: var(--ga-gray-50);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 18px;
+    }
+
+    .ga-summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 9px 0;
+        border-bottom: 1px solid #e5e3da;
+        font-size: 13px;
+    }
+
+    .ga-summary-row:last-child {
+        border-bottom: none;
+    }
+
+    .ga-summary-label {
+        color: var(--ga-gray-700);
+    }
+
+    .ga-summary-val {
+        font-weight: 600;
+    }
+
+    .ga-section-label {
+        font-size: 11px;
+        color: var(--ga-gray-500);
+        margin-bottom: 10px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+
+    .ga-divider-thin {
+        height: 1px;
+        background: #e5e3da;
+        margin: 18px 0;
+    }
+
+    /* POPUP */
+    .ga-scratch-popup {
+        --ga-gold: #FFC107;
+        --ga-gold-dark: #c69100;
+        position: fixed;
+        inset: 0;
+        background: var(--ga-navy, #1B3F8B);
+        z-index: 999999;
+        display: none;
+        flex-direction: column;
+        overflow: hidden;
+        height: 100dvh;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: #fff;
+    }
+
+    .ga-scratch-popup.show {
+        display: flex;
+        animation: gaSlideUp 0.35s cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+
+    @keyframes gaSlideUp {
+        from {
+            transform: translateY(100%);
+        }
+
+        to {
+            transform: translateY(0);
+        }
+    }
+
+    .ga-scratch-header {
+        padding: 16px 18px;
+        padding-top: max(16px, env(safe-area-inset-top));
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-shrink: 0;
+        position: relative;
+        z-index: 3;
+    }
+
+    .ga-close-btn {
+        background: rgba(255, 255, 255, 0.15);
+        color: #fff;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .ga-close-btn:active {
+        background: rgba(255, 255, 255, 0.25);
+    }
+
+    .ga-scratch-card-num {
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        opacity: 0.85;
+    }
+
+    .ga-scratch-spacer {
+        width: 36px;
+    }
+
+    .ga-popup-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 20px 24px;
+        color: #fff;
+        text-align: center;
+        overflow-y: auto;
+        position: relative;
+        z-index: 2;
+    }
+
+    .ga-celeb-header {
+        display: none;
+    }
+
+    .ga-popup-body.mode-celebrating .ga-celeb-header {
+        display: block;
+        animation: gaFadeIn 0.4s;
+    }
+
+    @keyframes gaBounce {
+        0% {
+            transform: scale(0);
+        }
+
+        60% {
+            transform: scale(1.18);
+        }
+
+        100% {
+            transform: scale(1);
+        }
+    }
+
+    @keyframes gaFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .ga-scratch-instructions {
+        margin-bottom: 22px;
+        transition: opacity 0.3s;
+    }
+
+    .ga-scratch-instructions.fading {
+        opacity: 0;
+    }
+
+    .ga-popup-body.mode-celebrating .ga-scratch-instructions {
+        display: none;
+    }
+
+    .ga-scratch-title {
+        font-size: 22px;
+        font-weight: 600;
+        margin: 0 0 6px !important;
+        letter-spacing: -0.3px;
+        color: #fff;
+    }
+
+    .ga-scratch-subtitle {
+        font-size: 13px;
+        opacity: 0.8;
+        color: #fff;
+    }
+
+    .ga-scratch-arena {
+        position: relative;
+        width: min(300px, 80vw);
+        aspect-ratio: 1 / 1.15;
+        min-height: 280px;
+        border-radius: 20px;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        margin-bottom: 20px;
+        flex-shrink: 0;
+    }
+
+    .ga-prize-layer {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        background: transparent;
+    }
+
+    .ga-prize-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        border-radius: inherit;
+    }
+
+    /* ga-prize-code-overlay removed — code now rendered below card via ga-celeb-draw-code */
+
+    .ga-scratch-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+        cursor: grab;
+        display: block;
+    }
+
+    .ga-scratch-canvas:active {
+        cursor: grabbing;
+    }
+
+    .ga-scratch-canvas.revealed {
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.5s ease-out;
+    }
+
+    .ga-scratch-loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(27, 63, 139, 0.92);
+        z-index: 10;
+        color: #fff;
+        font-size: 13px;
+    }
+
+    .ga-spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: gaSpin 0.8s linear infinite;
+        margin-right: 12px;
+    }
+
+    @keyframes gaSpin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .ga-scratch-footer-hint {
+        font-size: 13px;
+        opacity: 0.7;
+        color: #fff;
+        transition: opacity 0.3s;
+    }
+
+    .ga-scratch-footer-hint.hidden {
+        opacity: 0;
+    }
+
+    .ga-popup-body.mode-celebrating .ga-scratch-footer-hint {
+        display: none;
+    }
+
+    .ga-celeb-footer {
+        display: none;
+        width: 100%;
+        max-width: 320px;
+        margin-top: 4px;
+    }
+
+    .ga-popup-body.mode-celebrating .ga-celeb-footer {
+        display: block;
+        animation: gaFadeIn 0.5s 0.1s both;
+    }
+
+    /* Draw code displayed inside the prize card itself */
+    .ga-prize-code {
+        margin: 8px 0 4px;
+        padding: 8px 14px;
+        background: rgba(255, 255, 255, 0.65);
+        border: 1px dashed rgba(114, 36, 62, 0.4);
+        border-radius: 8px;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1.2;
+    }
+
+    .ga-prize-code-label {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        opacity: 0.65;
+        color: #72243E;
+        margin-bottom: 2px;
+    }
+
+    .ga-prize-code-value {
+        font-family: 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 18px;
+        font-weight: 700;
+        color: #72243E;
+        letter-spacing: 2px;
+    }
+
+    /* Headline block above the status pill: small line, big phrase, small line */
+    .ga-celeb-headline {
+        margin-bottom: 16px;
+    }
+
+    .ga-celeb-headline:empty {
+        display: none;
+    }
+
+    .ga-celeb-headline-pre {
+        font-size: 13px;
+        color: #fff;
+        opacity: 0.9;
+        margin: 0 0 4px !important;
+    }
+
+    .ga-celeb-headline-pre:empty {
+        display: none;
+    }
+
+    .ga-celeb-headline-big {
+        font-size: 26px;
+        font-weight: 800;
+        color: var(--ga-gold);
+        margin: 0 0 4px !important;
+        letter-spacing: -0.3px;
+        line-height: 1.15;
+    }
+
+    .ga-celeb-headline-big:empty {
+        display: none;
+    }
+
+    .ga-celeb-headline-post {
+        font-size: 12px;
+        color: #fff;
+        opacity: 0.8;
+        margin: 0 !important;
+        line-height: 1.4;
+    }
+
+    .ga-celeb-headline-post:empty {
+        display: none;
+    }
+
+    .ga-celeb-status-pill {
+        display: inline-block;
+        padding: 5px 12px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(255, 255, 255, 0.15);
+        color: #fff;
+        margin-bottom: 14px;
+    }
+
+    .ga-celeb-status-pill:empty {
+        display: none;
+    }
+
+    .ga-celeb-status-pill.sent {
+        background: rgba(15, 110, 86, 0.45);
+        color: #d6f5e7;
+    }
+
+    .ga-celeb-status-pill.won {
+        background: rgba(212, 83, 126, 0.45);
+        color: #ffd6e3;
+    }
+
+    .ga-celeb-msg {
+        font-size: 13px;
+        line-height: 1.55;
+        opacity: 0.88;
+        color: #fff;
+        margin: 0 0 18px !important;
+    }
+
+    .ga-celeb-msg:empty {
+        display: none;
+    }
+
+    /* Personalized greeting shown ABOVE the prize card in celebration mode */
+    .ga-celeb-greeting {
+        display: none;
+        font-size: 17px;
+        font-weight: 700;
+        color: #FFC107;
+        text-align: center;
+        margin: 0 0 18px !important;
+        letter-spacing: -0.2px;
+        line-height: 1.3;
+        text-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
+        width: 100%;
+    }
+
+    .ga-popup-body.mode-celebrating .ga-celeb-greeting {
+        display: block;
+        margin-top: 8px !important;
+        animation: gaFadeIn 0.35s ease both;
+    }
+
+    /* Draw code block below the card — shown only for draw outcomes */
+    .ga-celeb-draw-code {
+        display: none;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1.5px dashed rgba(255, 255, 255, 0.45);
+        border-radius: 10px;
+        padding: 10px 24px;
+        text-align: center;
+        margin: 0 0 14px !important;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .ga-celeb-draw-code:not(:empty) {
+        display: block;
+    }
+
+    .ga-celeb-draw-code-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.2px;
+        color: rgba(255, 255, 255, 0.65);
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+
+    .ga-celeb-draw-code-value {
+        font-size: 22px;
+        font-weight: 800;
+        color: #FFC107;
+        letter-spacing: 2px;
+        font-family: 'Courier New', monospace;
+    }
+
+    .ga-celeb-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .ga-celeb-btn.full-width {
+        flex: 1;
+    }
+
+    .ga-celeb-btn {
+        flex: 1;
+        padding: 13px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .ga-celeb-btn.primary {
+        background: var(--ga-gold, #FFC107);
+        color: var(--ga-navy, #1B3F8B);
+    }
+
+    .ga-celeb-btn.primary:active {
+        background: var(--ga-gold-dark, #c69100);
+    }
+
+    .ga-celeb-btn.secondary {
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
+    }
+
+    /* Small italic footnote below the action buttons */
+    .ga-celeb-footnote {
+        font-size: 11px;
+        font-style: italic;
+        color: #fff;
+        opacity: 0.65;
+        margin: 14px 0 0 !important;
+        line-height: 1.4;
+    }
+
+    .ga-celeb-footnote:empty {
+        display: none;
+    }
+
+    .ga-confetti-bg {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+        z-index: 1;
+        display: none;
+    }
+
+    .ga-confetti-bg.show {
+        display: block;
+    }
+
+    .ga-confetti-bg span {
+        position: absolute;
+        width: 8px;
+        height: 12px;
+        background: var(--ga-gold, #FFC107);
+        top: -20px;
+        animation: gaFall linear infinite;
+    }
+
+    @keyframes gaFall {
+        to {
+            transform: translateY(110vh) rotate(720deg);
+        }
+    }
+
+    .ga-toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #2C2C2A;
+        color: #fff;
+        padding: 10px 18px;
+        border-radius: 999px;
+        font-size: 13px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        z-index: 9999999;
+        pointer-events: none;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .ga-toast.show {
+        opacity: 1;
+    }
+
+    body.ga-popup-open {
+        overflow: hidden !important;
+    }
+</style>
+
+<script>
+    (function () {
+        /* =========================================================
+           CONFIGURATION — UPDATE THIS BEFORE PASTING TO WORDPRESS
+           ========================================================= */
+        const API_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+        /* ========================================================= */
+
+        let currentMerchantName = '';
+        let currentUid = '';          // set once after successful lookup, used by all subsequent calls
+        let activeScratchSession = null;
+        let cardCache = {};
+
+        const $ = (id) => document.getElementById(id);
+
+        function showToast(msg) {
+            const t = $('ga-toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2200);
+        }
+        function setLoading() { $('ga-body').innerHTML = '<div class="ga-loading">Mengecek kartu kamu...</div>'; }
+        function showError(msg) { $('ga-body').innerHTML = '<div class="ga-loading">' + esc(msg) + '</div>'; }
+
+        /**
+         * Normalizes any phone number format to a bare digit string starting with '8'.
+         * Handles: 08xxx, 628xxx, +628xxx, 8xxx, spaces, dashes, dots.
+         * Examples:
+         *   "0812-3456-7890"  → "81234567890"
+         *   "62 812 3456 7890" → "81234567890"
+         *   "+62812.3456.7890" → "81234567890"
+         *   "812 3456 7890"   → "81234567890"
+         */
+        function normalizeUid(raw) {
+            // Strip everything except digits
+            let digits = raw.replace(/\D/g, '');
+            // Remove country code prefix: 62 → strip, leaving bare number
+            if (digits.startsWith('62')) digits = digits.slice(2);
+            // Remove leading zero
+            if (digits.startsWith('0')) digits = digits.slice(1);
+            return digits; // e.g. "81234567890"
+        }
+
+        function onCheck() {
+            const uid = normalizeUid($('ga-uid-input').value);
+            if (!uid) { showToast('Masukin nomor HP dulu'); return; }
+            currentUid = '';   // reset until new lookup succeeds
+            setLoading();
+            callLookup(uid);
+        }
+
+        function callLookup(uid) {
+            const url = API_URL + '?action=lookup&uid=' + encodeURIComponent(uid);
+            fetch(url, { method: 'GET', redirect: 'follow' })
+                .then(r => r.text())
+                .then(text => {
+                    try { return JSON.parse(text); }
+                    catch (e) { throw new Error('Not JSON: ' + text.substring(0, 200)); }
+                })
+                .then(renderState)
+                .catch(err => showError('Gagal terhubung: ' + err.message));
+        }
+
+        function callRedeem(payload, onDone) {
+            const params = new URLSearchParams({
+                action: 'redeem',
+                card_id: payload.card_id,
+                uid: payload.uid,
+                idempotency_key: payload.idempotency_key || '',
+                user_agent: payload.user_agent || ''
+            });
+            fetch(API_URL + '?' + params.toString(), { method: 'GET', redirect: 'follow' })
+                .then(r => r.text())
+                .then(text => {
+                    try { return JSON.parse(text); }
+                    catch (e) { throw new Error('Not JSON: ' + text.substring(0, 200)); }
+                })
+                .then(onDone)
+                .catch(err => {
+                    console.error('[redeem] error:', err);
+                    const isNetwork = err.message && (err.message.toLowerCase().includes('fetch') || err.message.toLowerCase().includes('network'));
+                    onDone({
+                        ok: false, error: 'network_error', message: isNetwork
+                            ? 'Koneksi bermasalah. Pastikan internet aktif lalu coba lagi.'
+                            : err.message
+                    });
+                });
+        }
+
+        function renderState(resp) {
+            if (!resp || !resp.ok) {
+                showError('Error: ' + ((resp && (resp.message || resp.error)) || 'unknown'));
+                return;
+            }
+            currentMerchantName = resp.merchant_name || '';
+            currentUid = resp.uid || '';
+            cardCache = {};
+            if (resp.orders) {
+                resp.orders.forEach(o => {
+                    (o.cards || []).forEach(c => { cardCache[c.card_id] = c; });
+                });
+            }
+            if (resp.state === 'no_order') return renderNoOrder(resp);
+            if (resp.state === 'order_pending') return renderPending(resp);
+            if (resp.state === 'cards_ready') return renderCards(resp);
+            if (resp.state === 'all_scratched') return renderAllScratched(resp);
+        }
+
+        function renderNoOrder() {
+            $('ga-body').innerHTML =
+                '<div class="ga-empty-state">' +
+                '<div class="ga-empty-icon">🔍</div>' +
+                '<h3 class="ga-empty-title">Hmm.. kartu hadiah belum ada</h3>' +
+                '<p class="ga-empty-desc">Karena belum ada pembelian EDC BukuAgen selama periode promo untuk nomor ini.</p>' +
+                '<p class="ga-empty-desc">Yuk beli EDC BukuAgen sekarang &amp; gosok kartu berhadiahnya!</p>' +
+                '</div>';
+        }
+
+        function renderPending(resp) {
+            const o = resp.orders[0];
+            $('ga-body').innerHTML =
+                '<div class="ga-order-block">' +
+                '<div class="ga-order-head"><div>' +
+                '<div class="ga-order-prod">EDC ' + esc(stripNew(o.product_name)) + '</div>' +
+                '<div class="ga-order-meta">Pesanan ' + formatDate(o.paid_at_jkt) + ' · Rp ' + fmtIdr(o.price_idr) + '</div>' +
+                '</div><span class="ga-status-badge ga-status-pending">⏳ Diproses</span></div>' +
+                '<div class="ga-empty-state" style="padding-top:8px">' +
+                '<div class="ga-empty-icon" style="background:var(--ga-amber-bg);color:var(--ga-amber-text)">📦</div>' +
+                '<h3 class="ga-empty-title">Kartu Juragan lagi diproses</h3>' +
+                '<p class="ga-empty-desc">Kartu berhadiah akan muncul jika pembelian sudah dikonfirmasi dan verifikasi Juragan sudah selesai diproses.</p>' +
+                '<p class="ga-empty-desc">Cek lagi nanti ya, Gan!</p>' +
+                '</div></div>';
+        }
+
+        function renderCards(resp) {
+            let html = '';
+            const eligible = resp.orders.filter(o => o.eligible);
+            eligible.forEach((o, i) => {
+                html += renderOrderBlock(o);
+                if (i < eligible.length - 1) html += '<div class="ga-divider-thin"></div>';
+            });
+            // Show the full reminder (State A & B): has unscratched cards
+            html += buildReminderNote('has_unscratched');
+            $('ga-body').innerHTML = html;
+        }
+
+        function renderOrderBlock(o) {
+            const isAndroid = o.product_name.indexOf('Android') !== -1;
+            const unscratchedCount = o.cards.filter(c => c.status === 'bound').length;
+            const statusBadge = unscratchedCount > 0
+                ? '<span class="ga-status-badge ga-status-ready">✓ Siap digosok</span>'
+                : '<span class="ga-status-badge ga-status-scratched">Selesai</span>';
+            const gridClass = o.cards.length === 1 ? 'ga-cards-grid single' : 'ga-cards-grid';
+            let html = '<div class="ga-order-block">' +
+                '<div class="ga-order-head"><div>' +
+                '<div class="ga-order-prod">EDC ' + esc(stripNew(o.product_name)) +
+                (isAndroid ? '<span class="ga-badge-quota">2× kartu</span>' : '') + '</div>' +
+                '<div class="ga-order-meta">Pesanan ' + formatDate(o.paid_at_jkt) + ' · Rp ' + fmtIdr(o.price_idr) + '</div>' +
+                '</div>' + statusBadge + '</div>' +
+                '<div class="' + gridClass + '">';
+            o.cards.forEach(c => { html += renderCardTile(c, o); });
+            html += '</div></div>';
+            return html;
+        }
+
+        function renderCardTile(c, o) {
+            if (c.status === 'bound') {
+                return '<div class="ga-card-tile unscratched clickable" data-action="scratch" data-card-id="' + esc(c.card_id) + '" data-order-id="' + esc(o.order_id) + '" data-seq="' + c.sequence_no + '">' +
+                    '<div class="ga-card-num">KARTU BERHADIAH #' + c.sequence_no + '</div>' +
+                    '<div class="ga-scratch-circle">👆</div>' +
+                    '<div class="ga-scratch-label">Gosok di sini sekarang!</div>' +
+                    '</div>';
+            }
+            if (c.outcome_type === 'cash' && c.cash_prize) {
+                const disb = c.disbursement || {};
+                const disbLabel = disb.status === 'sent' ? 'Sudah dicairkan'
+                    : disb.status === 'queued' ? ('Cair batch ' + (disb.batch || ''))
+                        : (disb.batch || '');
+                return '<div class="ga-card-tile cash-win clickable" data-action="reopen" data-card-id="' + esc(c.card_id) + '" data-seq="' + c.sequence_no + '">' +
+                    '<div class="ga-card-num" style="color:var(--ga-cream-text);opacity:0.75">KARTU #' + c.sequence_no + '</div>' +
+                    '<div class="ga-cash-label-small">Kamu menang</div>' +
+                    '<div class="ga-cash-amount">Rp ' + fmtIdr(c.cash_prize.value_idr) + '</div>' +
+                    '<div class="ga-cash-tier">' + esc(disbLabel) + '</div>' +
+                    '<div class="ga-tap-hint">TAP UNTUK LIHAT</div>' +
+                    '</div>';
+            }
+            if (c.outcome_type === 'draw' && c.draw_entry) {
+                const de = c.draw_entry;
+                const isWon = de.result === 'won';
+                const isNotDrawn = de.result === 'not_drawn';
+                let label = 'Masuk pool undian!';
+                let date = 'LIVE ' + fmtDateId(de.livestream_date);
+                if (isWon && de.grand_prize) { label = 'KAMU MENANG'; date = esc(de.grand_prize.label); }
+                if (isNotDrawn) { label = 'Belum beruntung kali ini'; date = 'Undian ' + fmtDateId(de.livestream_date); }
+                const code = de.draw_code || '';
+                const codeBlock = code
+                    ? '<div class="ga-draw-code" data-code="' + esc(code) + '" data-revealed="false" onclick="event.stopPropagation(); window.toggleDrawCode(this)">' +
+                    '<span class="ga-draw-code-label">KODE</span>' +
+                    '<span class="ga-draw-code-value">GOSOK-•••••</span>' +
+                    '<span class="ga-draw-code-toggle">👁</span>' +
+                    '</div>'
+                    : '';
+                return '<div class="ga-card-tile draw-win clickable" data-action="reopen" data-card-id="' + esc(c.card_id) + '" data-seq="' + c.sequence_no + '">' +
+                    '<div class="ga-card-num" style="color:var(--ga-pink-text);opacity:0.75">KARTU #' + c.sequence_no + '</div>' +
+                    '<div class="ga-draw-pill">' + (isWon ? 'PEMENANG!' : 'HADIAH SPESIAL') + '</div>' +
+                    '<div class="ga-draw-label">' + esc(label) + '</div>' +
+                    '<div class="ga-draw-date">' + esc(date) + '</div>' +
+                    codeBlock +
+                    '<div class="ga-tap-hint">TAP UNTUK LIHAT</div>' +
+                    '</div>';
+            }
+            return '<div class="ga-card-tile">Kartu #' + c.sequence_no + '</div>';
+        }
+
+        /**
+         * Builds the bottom reminder/info note based on the current page state.
+         *
+         * mode:
+         *   'has_unscratched'      — State A & B: one or more cards still unscratched
+         *                           Show: disbursement day + Grand Prize draw + deadline
+         *   'all_scratched_draw'   — State D: all scratched AND merchant has draw ticket(s)
+         *                           Show: tune-in-to-livestream note
+         *   'all_scratched_no_draw'— State C: all scratched, no draw tickets at all
+         *                           Show: disbursement schedule only, NO @bukuwarung_ mention
+         */
+        function buildReminderNote(mode) {
+            if (mode === 'has_unscratched') {
+                // Matches image 2 exactly
+                return '<div class="ga-disbursement-note">' +
+                    'Hadiah <strong>Komisi Agen</strong> akan dikirim pada hari <strong>Jumat</strong> ' +
+                    'setelah kartu digosok. Hadiah Grand Prize akan diundi LIVE di Instagram ' +
+                    '<strong>@bukuwarung_</strong>. Gosok kartu paling lambat ' +
+                    '<strong>8 Juli 2026 11.59 WIB</strong> &amp; dapatkan hadiahnya!' +
+                    '</div>';
+            }
+            if (mode === 'all_scratched_draw') {
+                // State D — has draw ticket, remind about livestream
+                return '<div class="ga-disbursement-note">' +
+                    'Jangan lupa tonton undian hadiah Grand Prize di LIVE Streaming Instagram ' +
+                    '<strong>@bukuwarung_</strong>! Pastikan Juragan hadir saat live ya.' +
+                    '</div>';
+            }
+            // State C — all scratched, cash prizes only, no draw
+            return '<div class="ga-disbursement-note">' +
+                'Hadiah <strong>Komisi Agen</strong> Juragan akan dikirimkan ke saldo BukuAgen ' +
+                'sesuai jadwal pencairan batch. Terima kasih sudah ikut Gosok Berhadiah BukuAgen!' +
+                '</div>';
+        }
+
+        function renderAllScratched(resp) {
+            const s = resp.summary;
+            const hasDrawTickets = s.draw_tickets_active > 0;
+
+            let cardsHtml = '';
+            resp.orders.forEach(o => o.cards.forEach(c => { cardsHtml += renderCardTile(c, o); }));
+
+            // Summary rows — hide draw row when merchant has no active draw tickets
+            const drawRow = hasDrawTickets
+                ? '<div class="ga-summary-row"><span class="ga-summary-label">Tiket undian Grand Prize</span><span class="ga-summary-val" style="color:var(--ga-pink-text)">' + s.draw_tickets_active + ' tiket</span></div>'
+                : '';
+
+            $('ga-body').innerHTML =
+                '<div class="ga-section-label">Ringkasan Hadiah Juragan</div>' +
+                '<div class="ga-summary-card">' +
+                '<div class="ga-summary-row"><span class="ga-summary-label">Total kartu digosok</span><span class="ga-summary-val">' + s.cards_scratched + ' kartu</span></div>' +
+                '<div class="ga-summary-row"><span class="ga-summary-label">Total hadiah Komisi Agen</span><span class="ga-summary-val" style="color:var(--ga-green-text)">Rp ' + fmtIdr(s.total_komisi_won_idr) + '</span></div>' +
+                '<div class="ga-summary-row"><span class="ga-summary-label">Total hadiah dikirim</span><span class="ga-summary-val">Rp ' + fmtIdr(s.komisi_disbursed_idr) + '</span></div>' +
+                drawRow +
+                '</div>' +
+                '<div class="ga-section-label">Riwayat Gosok Berhadiah Juragan</div>' +
+                '<div class="ga-cards-grid">' + cardsHtml + '</div>' +
+                // State C (no draw) vs State D (has draw) — different note
+                buildReminderNote(hasDrawTickets ? 'all_scratched_draw' : 'all_scratched_no_draw');
+        }
+
+        /* Toggle for the masked draw code on card tiles. Exposed on window
+           so the inline onclick can reach it from outside the IIFE. */
+        window.toggleDrawCode = function (el) {
+            const revealed = el.dataset.revealed === 'true';
+            const valueEl = el.querySelector('.ga-draw-code-value');
+            if (revealed) {
+                valueEl.textContent = 'GOSOK-•••••';
+                el.dataset.revealed = 'false';
+            } else {
+                valueEl.textContent = el.dataset.code;
+                el.dataset.revealed = 'true';
+            }
+        };
+
+        /* ====================================================================
+           POPUP CONTROL — single popup, two modes via .mode-celebrating class
+           ==================================================================== */
+        function setPopupMode(mode) {
+            const body = $('ga-popup-body');
+            if (mode === 'celebrating') {
+                body.classList.add('mode-celebrating');
+                $('ga-confetti-bg').classList.add('show');
+                spawnConfetti();
+            } else {
+                body.classList.remove('mode-celebrating');
+                $('ga-confetti-bg').classList.remove('show');
+                $('ga-confetti-bg').innerHTML = '';
+            }
+        }
+
+        function openScratchPopup(cardId, orderId, sequenceNo) {
+            // Use stored uid from last successful lookup — never re-read from input field
+            const uid = currentUid || normalizeUid($('ga-uid-input').value);
+            if (!uid) {
+                showToast('Session habis, masukkan nomor HP lagi');
+                return;
+            }
+            activeScratchSession = { cardId: cardId, orderId: orderId, sequenceNo: sequenceNo, response: null, hasStarted: false, mode: 'scratch' };
+
+            $('ga-popup-card-num').textContent = cardId;
+            $('ga-celeb-status-pill').textContent = '';
+            $('ga-celeb-status-pill').className = 'ga-celeb-status-pill';
+            $('ga-celeb-msg').textContent = '';
+            $('ga-celeb-footnote').textContent = '';
+            $('ga-celeb-headline-pre').textContent = '';
+            $('ga-celeb-headline-big').textContent = '';
+            $('ga-celeb-headline-post').textContent = '';
+            const _gr = $('ga-celeb-greeting'); if (_gr) _gr.textContent = '';
+            const _dc = $('ga-celeb-draw-code'); if (_dc) _dc.innerHTML = '';
+
+            setPopupMode('scratch');
+            $('ga-scratch-instructions').classList.remove('fading');
+            $('ga-scratch-hint').classList.remove('hidden');
+            $('ga-scratch-hint').textContent = 'Gosok di area ini sampai hadiah terbuka';
+            $('ga-scratch-loading').style.display = 'flex';
+            $('ga-prize-layer').innerHTML = '';
+            $('ga-scratch-canvas').classList.remove('revealed');
+            $('ga-scratch-canvas').style.display = 'block';
+
+            $('ga-scratch-popup').classList.add('show');
+            document.body.classList.add('ga-popup-open');
+
+            callRedeem({
+                card_id: cardId, uid: uid,
+                idempotency_key: cardId + '-' + Date.now(),
+                user_agent: navigator.userAgent
+            }, onRedeemResponse);
+        }
+
+        function onRedeemResponse(resp) {
+            if (!resp.ok) {
+                showToast(resp.message || resp.error || 'Gagal');
+                closeScratchPopup();
+                return;
+            }
+            activeScratchSession.response = resp;
+            $('ga-scratch-loading').style.display = 'none';
+            paintPrizeLayer({
+                outcome_type: resp.outcome_type,
+                cash_prize: resp.cash_prize,
+                draw_entry: resp.draw_entry
+            });
+            requestAnimationFrame(function () { requestAnimationFrame(initScratchCanvas); });
+        }
+
+        /* Prize image URLs keyed by cash value (IDR) or 'draw' */
+        const PRIZE_IMG = {
+            5000: 'assets/prize-5k.svg',
+            10000: 'assets/prize-10k.svg',
+            20000: 'assets/prize-20k.svg',
+            50000: 'assets/prize-50k.svg',
+            100000: 'assets/prize-100k.svg',
+            200000: 'assets/prize-200k.svg',
+            draw: 'assets/prize-draw.svg',
+        };
+
+        function prizeImgTag(type, valueIdr) {
+            const src = type === 'draw' ? PRIZE_IMG['draw'] : (PRIZE_IMG[valueIdr] || '');
+            if (!src) return '';
+            return '<img class="ga-prize-img" src="' + src + '" alt="Hadiah" />';
+        }
+
+        function paintPrizeLayer(opts) {
+            const layer = $('ga-prize-layer');
+            layer.className = 'ga-prize-layer';
+            if (opts.outcome_type === 'cash' && opts.cash_prize) {
+                layer.innerHTML = prizeImgTag('cash', opts.cash_prize.value_idr);
+            } else if (opts.outcome_type === 'draw' && opts.draw_entry) {
+                layer.innerHTML = prizeImgTag('draw', null);
+            }
+        }
+
+        /* CANVAS SCRATCH */
+        let scratchCtx = null, scratchCanvas = null, isDrawing = false, lastSampleAt = 0, revealed = false, lastPoint = null;
+
+        function initScratchCanvas() {
+            scratchCanvas = $('ga-scratch-canvas');
+            const rect = scratchCanvas.getBoundingClientRect();
+            if (rect.width === 0) { setTimeout(initScratchCanvas, 60); return; }
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            scratchCanvas.width = Math.round(rect.width * dpr);
+            scratchCanvas.height = Math.round(rect.height * dpr);
+            scratchCtx = scratchCanvas.getContext('2d', { willReadFrequently: true });
+            scratchCtx.scale(dpr, dpr);
+            const w = rect.width, h = rect.height;
+            const grad = scratchCtx.createLinearGradient(0, 0, w, h);
+            grad.addColorStop(0, '#B8B5A8');
+            grad.addColorStop(0.5, '#9C9788');
+            grad.addColorStop(1, '#A39E90');
+            scratchCtx.fillStyle = grad;
+            scratchCtx.fillRect(0, 0, w, h);
+            scratchCtx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+            for (let i = 0; i < 28; i++) {
+                scratchCtx.beginPath();
+                scratchCtx.arc(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 0, Math.PI * 2);
+                scratchCtx.fill();
+            }
+            scratchCtx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            scratchCtx.font = 'bold 14px -apple-system, sans-serif';
+            scratchCtx.textAlign = 'center';
+            scratchCtx.fillText('Gosok di area ini', w / 2, h / 2 - 8);
+            scratchCtx.font = '11px -apple-system, sans-serif';
+            scratchCtx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            scratchCtx.fillText('sampai hadiah terbuka', w / 2, h / 2 + 12);
+            revealed = false; isDrawing = false; lastPoint = null;
+            scratchCanvas.onpointerdown = onPointerDown;
+            scratchCanvas.onpointermove = onPointerMove;
+            scratchCanvas.onpointerup = onPointerUp;
+            scratchCanvas.onpointercancel = onPointerUp;
+            scratchCanvas.onpointerleave = onPointerUp;
+        }
+
+        function getCanvasPoint(e) {
+            const rect = scratchCanvas.getBoundingClientRect();
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+        function onPointerDown(e) {
+            if (revealed) return;
+            e.preventDefault();
+            isDrawing = true;
+            try { scratchCanvas.setPointerCapture(e.pointerId); } catch (_) { }
+            if (!activeScratchSession.hasStarted) {
+                activeScratchSession.hasStarted = true;
+                $('ga-scratch-instructions').classList.add('fading');
+                /* Keep the hint consistent during scratch; just fade instructions */
+                // hint text already set in openScratchPopup
+            }
+            const p = getCanvasPoint(e);
+            lastPoint = p;
+            scratchAt(p);
+        }
+        function onPointerMove(e) {
+            if (!isDrawing || revealed) return;
+            e.preventDefault();
+            const p = getCanvasPoint(e);
+            if (lastPoint) {
+                const dx = p.x - lastPoint.x, dy = p.y - lastPoint.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const steps = Math.ceil(dist / 8);
+                for (let i = 1; i <= steps; i++) {
+                    scratchAt({ x: lastPoint.x + (dx * i / steps), y: lastPoint.y + (dy * i / steps) });
+                }
+            } else { scratchAt(p); }
+            lastPoint = p;
+            const now = Date.now();
+            if (now - lastSampleAt > 150) {
+                lastSampleAt = now;
+                if (computeRevealRatio() > 0.5) autoReveal();
+            }
+        }
+        function onPointerUp() {
+            if (!isDrawing) return;
+            isDrawing = false; lastPoint = null;
+            if (!revealed && computeRevealRatio() > 0.4) autoReveal();
+        }
+        function scratchAt(p) {
+            scratchCtx.globalCompositeOperation = 'destination-out';
+            scratchCtx.beginPath();
+            scratchCtx.arc(p.x, p.y, 28, 0, Math.PI * 2);
+            scratchCtx.fill();
+        }
+        function computeRevealRatio() {
+            const w = scratchCanvas.width, h = scratchCanvas.height;
+            let cleared = 0, total = 0;
+            try {
+                const img = scratchCtx.getImageData(0, 0, w, h).data;
+                const step = Math.max(8, Math.floor(w / 50));
+                for (let y = 0; y < h; y += step) {
+                    for (let x = 0; x < w; x += step) {
+                        const i = (y * w + x) * 4 + 3;
+                        if (img[i] < 64) cleared++;
+                        total++;
+                    }
+                }
+            } catch (e) { return 0; }
+            return total > 0 ? cleared / total : 0;
+        }
+        function autoReveal() {
+            if (revealed) return;
+            revealed = true;
+            scratchCanvas.classList.add('revealed');
+            $('ga-scratch-hint').classList.add('hidden');
+            setTimeout(transitionToCelebration, 800);
+        }
+
+        function transitionToCelebration() {
+            const resp = activeScratchSession.response;
+            fillCelebrationCopy({
+                outcome_type: resp.outcome_type,
+                cash_prize: resp.cash_prize,
+                draw_entry: resp.draw_entry,
+                disbursement: resp.disbursement
+            });
+            setPopupMode('celebrating');
+        }
+
+        /* REOPEN — already-scratched card, no API call */
+        function openResultPopup(cardId) {
+            const card = cardCache[cardId];
+            if (!card) { showToast('Data kartu tidak ditemukan, refresh halaman dulu'); return; }
+            if (card.status !== 'scratched') { showToast('Kartu belum digosok'); return; }
+
+            activeScratchSession = { cardId: cardId, sequenceNo: card.sequence_no, mode: 'reopen' };
+            $('ga-popup-card-num').textContent = cardId;
+
+            $('ga-scratch-loading').style.display = 'none';
+            paintPrizeLayer({
+                outcome_type: card.outcome_type,
+                cash_prize: card.cash_prize,
+                draw_entry: card.draw_entry
+            });
+            $('ga-scratch-canvas').style.display = 'none';
+
+            fillCelebrationCopy({
+                outcome_type: card.outcome_type,
+                cash_prize: card.cash_prize,
+                draw_entry: card.draw_entry,
+                disbursement: card.disbursement
+            });
+
+            $('ga-scratch-popup').classList.add('show');
+            document.body.classList.add('ga-popup-open');
+
+            setTimeout(function () { setPopupMode('celebrating'); }, 200);
+        }
+
+        function fillCelebrationCopy(opts) {
+            /* Personalized greeting above the prize card */
+            const greetingEl = $('ga-celeb-greeting');
+            if (greetingEl) {
+                greetingEl.textContent = currentMerchantName
+                    ? 'Selamat, Juragan ' + currentMerchantName + '!'
+                    : 'Selamat, Juragan!';
+            }
+
+            /* Headline block under the prize card */
+            const pre = $('ga-celeb-headline-pre');
+            const big = $('ga-celeb-headline-big');
+            const post = $('ga-celeb-headline-post');
+            pre.textContent = '';
+            big.textContent = '';
+            post.textContent = '';
+
+            /* Status pill — kept for sent/won/not_drawn states only */
+            const pill = $('ga-celeb-status-pill');
+            pill.className = 'ga-celeb-status-pill';
+            pill.textContent = '';
+
+            let msg = '';
+            let footnote = '';
+
+            // Always clear draw code block — only shown for draw outcomes
+            const _drawCodeEl = $('ga-celeb-draw-code');
+            if (_drawCodeEl) _drawCodeEl.innerHTML = '';
+
+            if (opts.outcome_type === 'cash' && opts.cash_prize) {
+                pre.textContent = '🎉 Juragan menang hadiah uang';
+                big.textContent = 'Rp ' + fmtIdr(opts.cash_prize.value_idr);
+                post.textContent = 'dari Gosok Berhadiah BukuAgen';
+                if (opts.disbursement && opts.disbursement.status === 'sent') {
+                    pill.textContent = '✓ Sudah masuk Komisi Agen';
+                    pill.classList.add('sent');
+                }
+                msg = 'Bagikan keseruan ini ke media sosial Juragan!';
+                footnote = '*Hadiah akan dikirim ke Komisi Agen Juragan pada hari Jumat setelah kartu digosok.';
+            } else if (opts.outcome_type === 'draw' && opts.draw_entry) {
+                const de = opts.draw_entry;
+                if (de.result === 'won' && de.grand_prize) {
+                    pre.textContent = '🏆 Juragan menang hadiah utama';
+                    big.textContent = esc(de.grand_prize.label);
+                    post.textContent = 'Tim BukuAgen akan menghubungi Juragan untuk pengiriman hadiah.';
+                    pill.classList.add('won');
+                    pill.textContent = 'PEMENANG GRAND PRIZE';
+                    msg = 'Bagikan keseruan ini ke media sosial Juragan!';
+                } else if (de.result === 'not_drawn') {
+                    pre.textContent = '';
+                    big.textContent = 'Belum beruntung kali ini';
+                    post.textContent = 'Wave kamu sudah diundi. Tetap semangat ya, Juragan!';
+                    pill.textContent = '';
+                } else {
+                    /* pending draw — image on card already explains the prize, no headline needed */
+                    pre.textContent = '';
+                    big.textContent = '';
+                    post.textContent = '';
+                    pill.textContent = '⏳ Undian LIVE ' + fmtDateId(de.livestream_date);
+                    // Draw code block below the card
+                    const drawCodeEl = $('ga-celeb-draw-code');
+                    if (drawCodeEl) {
+                        const dc = de.draw_code || '';
+                        drawCodeEl.innerHTML = dc
+                            ? '<div class="ga-celeb-draw-code-label">Kode Undian</div>' +
+                            '<div class="ga-celeb-draw-code-value">' + esc(dc) + '</div>'
+                            : '';
+                    }
+                    msg = 'Tonton undian hadiah Grand Prize di LIVE Streaming Instagram @bukuwarung_ & bagikan keseruan ini di media sosial Juragan!';
+                    footnote = '*Pemenang WAJIB hadir saat live. Jika tidak hadir, maka hadiah akan hangus.';
+                }
+            }
+
+            $('ga-celeb-msg').textContent = msg;
+            $('ga-celeb-footnote').textContent = footnote;
+        }
+
+        function spawnConfetti() {
+            const c = $('ga-confetti-bg');
+            if (!c) return;
+            c.innerHTML = '';
+            const colors = ['#FFC107', '#FF7043', '#42A5F5', '#66BB6A', '#EC407A'];
+            for (let i = 0; i < 40; i++) {
+                const s = document.createElement('span');
+                s.style.left = Math.random() * 100 + '%';
+                s.style.background = colors[Math.floor(Math.random() * colors.length)];
+                s.style.animationDuration = (2.5 + Math.random() * 2) + 's';
+                s.style.animationDelay = (Math.random() * 0.4) + 's';
+                s.style.transform = 'rotate(' + (Math.random() * 360) + 'deg)';
+                c.appendChild(s);
+            }
+        }
+
+        function shareWin(opts) {
+            let text = '';
+            if (opts.outcome_type === 'cash' && opts.cash_prize) {
+                text = 'Saya menang Rp ' + fmtIdr(opts.cash_prize.value_idr) + ' dari Gosok Berhadiah EDC BukuAgen!';
+            } else if (opts.outcome_type === 'draw') {
+                const code = opts.draw_entry && opts.draw_entry.draw_code ? opts.draw_entry.draw_code : '';
+                text = 'Saya masuk Pool Hadiah Spesial Gosok Berhadiah BukuAgen!' +
+                    (code ? ' Kode undian saya: ' + code : '');
+            } else {
+                text = 'Saya ikut Gosok Berhadiah EDC BukuAgen!';
+            }
+            if (navigator.share) {
+                navigator.share({ text: text }).catch(function () { });
+            } else {
+                try { navigator.clipboard.writeText(text); showToast('Teks disalin!'); }
+                catch (e) { showToast('Salin manual'); }
+            }
+        }
+
+        function closeScratchPopup() {
+            $('ga-scratch-popup').classList.remove('show');
+            document.body.classList.remove('ga-popup-open');
+            setPopupMode('scratch');
+            if (activeScratchSession && activeScratchSession.mode === 'scratch') {
+                const uid = currentUid || normalizeUid($('ga-uid-input').value);
+                if (uid) callLookup(uid);
+            }
+            activeScratchSession = null;
+        }
+
+        function fmtIdr(n) { return Number(n || 0).toLocaleString('id-ID'); }
+        function stripNew(s) { return String(s || '').replace(' - New', ''); }
+        function formatDate(s) {
+            if (!s) return '';
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+            const d = new Date(s);
+            return d.getDate() + ' ' + months[d.getMonth()];
+        }
+
+        /** Formats an ISO date string (yyyy-MM-dd) or Date to Indonesian long format, e.g. "17 Juni 2026". */
+        function fmtDateId(s) {
+            if (!s) return '';
+            const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+            const d = (s instanceof Date) ? s : new Date(String(s).replace(/(\d{4}-\d{2}-\d{2}).*/, '$1') + 'T00:00:00');
+            return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+        }
+        function esc(s) {
+            if (s == null) return '';
+            return String(s).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', wireUp);
+        if (document.readyState === 'interactive' || document.readyState === 'complete') wireUp();
+
+        function wireUp() {
+            if ($('ga-check-btn')._wired) return;
+            $('ga-check-btn')._wired = true;
+            $('ga-check-btn').addEventListener('click', onCheck);
+            $('ga-uid-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') onCheck(); });
+            $('ga-close-btn').addEventListener('click', closeScratchPopup);
+            $('ga-celeb-close').addEventListener('click', closeScratchPopup);
+
+            $('ga-body').addEventListener('click', function (e) {
+                const tile = e.target.closest('.ga-card-tile.clickable');
+                if (!tile) return;
+                const action = tile.dataset.action;
+                if (action === 'scratch') {
+                    openScratchPopup(tile.dataset.cardId, tile.dataset.orderId, Number(tile.dataset.seq));
+                } else if (action === 'reopen') {
+                    openResultPopup(tile.dataset.cardId);
+                }
+            });
+
+            // Pre-filled link support: ?uid=08123456789 auto-fills and runs the lookup
+            const urlUid = new URLSearchParams(window.location.search).get('uid');
+            if (urlUid) {
+                $('ga-uid-input').value = urlUid;
+                onCheck();
+            }
+        }
+    })();
+</script>
+</body>
+</html>
